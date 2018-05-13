@@ -124,6 +124,7 @@ struct dSocket
   z_stream      * out_compress;                /* MCCP support */
   unsigned char * out_compress_buf;            /* MCCP support */
   bool            gmcp_enabled;                /* GMCP support */
+  bool            mssp_enabled;                /* MSDP support */
 };
 
 struct dMobile
@@ -205,6 +206,23 @@ extern const unsigned char compress_will2[];
 
 /***********************
  * End of MCCP support *
+ ***********************/
+
+/***********************
+ *    MSDP Support
+ ***********************/
+#define TELOP_MSDP           69
+#define MSDP_VAR             1
+#define MSDP_VAL             2
+#define MSDP_TABLE_OPEN      3
+#define MSDP_TABLE_CLOSE     4
+#define MSDP_ARRAY_OPEN      5
+#define MSDP_ARRAY_CLOSE     6
+
+extern const unsigned char mdsp_will[];
+
+/***********************
+ * End of MSDP support *
  ***********************/
 
 /***********************************
