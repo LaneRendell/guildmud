@@ -36,7 +36,6 @@ const unsigned char do_echo         [] = { IAC, WONT, TELOPT_ECHO,      '\0' };
 const unsigned char dont_echo       [] = { IAC, WILL, TELOPT_ECHO,      '\0' };
 const unsigned char gmcp_will       [] = { IAC, WILL, TELOPT_GMCP,      '\0' };
 
-/* msdp support*/
 /**
  * Enable and disable MSDP telnet commands
  */
@@ -315,6 +314,8 @@ bool new_socket(int sock)
   text_to_buffer(sock_new, (char *) compress_will2);
   text_to_buffer(sock_new, (char *) compress_will);
   text_to_buffer(sock_new, (char *) gmcp_will);
+  
+  /* negotaiate MSDP*/
   text_to_buffer(sock_new, (char *) msdp_will);
 
   /* send the greeting */
@@ -794,6 +795,14 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
         else if (dsock->inbuf[i-1] == (signed char) SB) {
           gmcp = true;
         }
+      } else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP)	    /* check for MSDP */
+      {
+          if (dsock->inbuf[i-1] == (signed char) DO)
+          {
+              log_string("Client supports and enabled MSDP.");
+          } else if (dsock->inbuf[i-1] == (signed char) DONT) {
+              log_string("Client does not support MSDP.");
+          }
       }
     }
     else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i]))
