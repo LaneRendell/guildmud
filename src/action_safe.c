@@ -164,6 +164,7 @@ void cmd_copyover(D_MOBILE *dMob, char *arg)
   while ((dsock = (D_SOCKET *) NextInList(&Iter)) != NULL)
   {
     compressEnd(dsock, dsock->compressing, false);
+    text_to_buffer(dsock, (char *)msdp_wont);
 
     if (dsock->state != STATE_PLAYING)
     {
@@ -181,6 +182,7 @@ void cmd_copyover(D_MOBILE *dMob, char *arg)
       text_to_socket(dsock, buf);
     }
   }
+  
   DetachIterator(&Iter);
 
   fprintf (fp, "-1\n");

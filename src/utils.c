@@ -204,6 +204,9 @@ void copyover_recover()
     /* negotiate compression */
     text_to_buffer(dsock, (char *) compress_will2);
     text_to_buffer(dsock, (char *) compress_will);
+    
+    /* negotiate MDSP */
+    text_to_buffer(dsock, (char *) msdp_will);
   }
   fclose(fp);
 }
