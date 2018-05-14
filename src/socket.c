@@ -80,7 +80,7 @@ void GameLoop(int control)
         current_time = time(NULL);
 
         /* copy the socket set */
-        memcpy(&rFd, &fSet, sizeof(fd_set));
+        memcpy(&rFd, &fSet, sizeof (fd_set));
 
         /* wait for something to happen */
         if (select(FD_SETSIZE, &rFd, NULL, NULL, &tv) < 0)
@@ -92,7 +92,7 @@ void GameLoop(int control)
             unsigned int socksize;
             int newConnection;
 
-            socksize = sizeof(sock);
+            socksize = sizeof (sock);
             if ((newConnection = accept(control, (struct sockaddr*) &sock, &socksize)) >= 0)
                 new_socket(newConnection);
         }
@@ -205,13 +205,13 @@ int init_socket()
     my_addr.sin_port = htons(MUDPORT);
 
     /* this actually fixes any problems with threads */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) == -1) {
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (int)) == -1) {
         perror("Error in setsockopt()");
         exit(1);
     }
 
     /* bind the port */
-    bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr));
+    bind(sockfd, (struct sockaddr *) &my_addr, sizeof (struct sockaddr));
 
     /* start listening already :) */
     listen(sockfd, 3);
@@ -245,11 +245,12 @@ bool new_socket(int sock)
      * there is no free socket in the free_list
      */
     if (StackSize(dsock_free) <= 0) {
-        if ((sock_new = (D_SOCKET*) malloc(sizeof(*sock_new))) == NULL) {
+        if ((sock_new = (D_SOCKET*) malloc(sizeof (*sock_new))) == NULL) {
             bug("New_socket: Cannot allocate memory for socket.");
             abort();
         }
-    } else {
+    }
+    else {
         sock_new = (D_SOCKET *) PopStack(dsock_free);
     }
 
@@ -266,17 +267,18 @@ bool new_socket(int sock)
     AttachToList(sock_new, dsock_list);
 
     /* do a host lookup */
-    size = sizeof(sock_addr);
+    size = sizeof (sock_addr);
     if (getpeername(sock, (struct sockaddr *) &sock_addr, &size) < 0) {
         perror("New_socket: getpeername");
         sock_new->hostname = strdup("unknown");
-    } else {
+    }
+    else {
         /* set the IP number as the temporary hostname */
         sock_new->hostname = strdup(inet_ntoa(sock_addr.sin_addr));
 
         if (strcasecmp(sock_new->hostname, "127.0.0.1")) {
             /* allocate some memory for the lookup data */
-            if ((lData = (LOOKUP_DATA *) malloc(sizeof(*lData))) == NULL) {
+            if ((lData = (LOOKUP_DATA *) malloc(sizeof (*lData))) == NULL) {
                 bug("New_socket: Cannot allocate memory for lookup data.");
                 abort();
             }
@@ -287,7 +289,8 @@ bool new_socket(int sock)
 
             /* dispatch the lookup thread */
             pthread_create(&thread_lookup, &attr, &lookup_address, (void*) lData);
-        } else sock_new->lookup_status++;
+        }
+        else sock_new->lookup_status++;
     }
 
     /* negotiate compression */
@@ -334,7 +337,8 @@ void close_socket(D_SOCKET *dsock, bool reconnect)
             dsock->player->socket = NULL;
             log_string("Closing link to %s", dsock->player->name);
         }
-    } else if (dsock->player)
+    }
+    else if (dsock->player)
         free_mobile(dsock->player);
 
     /* dequeue all events for this socket */
@@ -361,7 +365,7 @@ bool read_from_socket(D_SOCKET *dsock)
 
     /* check for buffer overflows, and drop connection in that case */
     size = strlen(dsock->inbuf);
-    if (size >= sizeof(dsock->inbuf) - 2) {
+    if (size >= sizeof (dsock->inbuf) - 2) {
         text_to_socket(dsock, "\n\r!!!! Input Overflow !!!!\n\r");
         return false;
     }
@@ -369,7 +373,7 @@ bool read_from_socket(D_SOCKET *dsock)
     /* start reading from the socket */
     for (;;) {
         int sInput;
-        int wanted = sizeof(dsock->inbuf) - 2 - size;
+        int wanted = sizeof (dsock->inbuf) - 2 - size;
 
         sInput = read(dsock->control, dsock->inbuf + size, wanted);
 
@@ -378,10 +382,12 @@ bool read_from_socket(D_SOCKET *dsock)
 
             if (dsock->inbuf[size - 1] == '\n' || dsock->inbuf[size - 1] == '\r')
                 break;
-        } else if (sInput == 0) {
+        }
+        else if (sInput == 0) {
             log_string("Read_from_socket: EOF");
             return false;
-        } else if (errno == EAGAIN || sInput == wanted)
+        }
+        else if (errno == EAGAIN || sInput == wanted)
             break;
         else {
             perror("Read_from_socket");
@@ -468,7 +474,8 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
     int length = strlen(txt);
 
     /* the color struct */
-    struct sAnsiColor {
+    struct sAnsiColor
+    {
         const char cTag;
         const char * cString;
         int aFlag;
@@ -540,18 +547,19 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
                         }
                     }
                     output[iPtr++] = 'm';
-                } else {
+                }
+                else {
                     underline = true;
                     output[iPtr++] = 27;
                     output[iPtr++] = '[';
                     output[iPtr++] = '4';
                     output[iPtr++] = 'm';
                 }
-            }                /* parse ## to # */
+            }/* parse ## to # */
             else if (*txt == '#') {
                 txt++;
                 output[iPtr++] = '#';
-            }                /* #n should clear all tags */
+            }/* #n should clear all tags */
             else if (*txt == 'n') {
                 txt++;
                 if (last != -1 || underline || bold) {
@@ -564,7 +572,7 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
                 }
 
                 last = -1;
-            }                /* check for valid color tag and parse */
+            }/* check for valid color tag and parse */
             else {
                 bool validTag = false;
 
@@ -597,7 +605,8 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
                                 /* changing to eTHIN wipes the old color */
                                 output[iPtr++] = ';';
                                 cSequence = true;
-                            } else if (!bold && ansiTable[j].aFlag == eBOLD) {
+                            }
+                            else if (!bold && ansiTable[j].aFlag == eBOLD) {
                                 output[iPtr++] = '1';
                                 bold = true;
 
@@ -690,23 +699,27 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
     for (; i < size; i++) {
         if (dsock->inbuf[i] == (signed char) IAC) {
             telopt = 1;
-        } else if (telopt == 1
-                && (dsock->inbuf[i] == (signed char) DO
-                || dsock->inbuf[i] == (signed char) DONT
-                || dsock->inbuf[i] == (signed char) SB)) {
+        }
+        else if (telopt == 1
+         && (dsock->inbuf[i] == (signed char) DO
+         || dsock->inbuf[i] == (signed char) DONT
+         || dsock->inbuf[i] == (signed char) SB)) {
             telopt = 2;
-        } else if (telopt == 1 && gmcp && dsock->inbuf[i] == (signed char) SE) {
+        }
+        else if (telopt == 1 && gmcp && dsock->inbuf[i] == (signed char) SE) {
             telopt = 0;
             gmcp = false;
             dsock->next_command[j] = '\0';
             gmcpReceived(dsock);
             dsock->next_command[j = 0] = '\0';
-        } else if (telopt == 1 && msdp && dsock->inbuf[i] == (signed char) SE) {
+        }
+        else if (telopt == 1 && msdp && dsock->inbuf[i] == (signed char) SE) {
             telopt = 0;
             msdp = false;
             dsock->next_command[j] = '\0';
             dsock->next_command[j = 0] = '\0';
-        } else if (telopt == 2) {
+        }
+        else if (telopt == 2) {
             telopt = 0;
 
             if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS) /* check for version 1 */ {
@@ -714,27 +727,33 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
                     compressStart(dsock, TELOPT_COMPRESS);
                 else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS, false);
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS2) /* check for version 2 */ {
+            }
+            else if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS2) /* check for version 2 */ {
                 if (dsock->inbuf[i - 1] == (signed char) DO) /* start compressing   */
                     compressStart(dsock, TELOPT_COMPRESS2);
                 else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS2, false);
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_GMCP) /* check for gmcp */ {
+            }
+            else if (dsock->inbuf[i] == (signed char) TELOPT_GMCP) /* check for gmcp */ {
                 if (dsock->inbuf[i - 1] == (signed char) DO)
                     gmcpEnable(dsock);
                 else if (dsock->inbuf[i - 1] == (signed char) SB) {
                     gmcp = true;
                 }
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
+            }
+            else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
                 if (dsock->inbuf[i - 1] == (signed char) DO) {
                     log_string("Client supports and enabled MSDP.");
-                } else if (dsock->inbuf[i - 1] == (signed char) DONT) {
+                }
+                else if (dsock->inbuf[i - 1] == (signed char) DONT) {
                     log_string("Client does not support MSDP.");
-                } else if (dsock->inbuff[i - 1] == (signed char) SB) {
+                }
+                else if (dsock->inbuff[i - 1] == (signed char) SB) {
 
                 }
             }
-        } else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i])) {
+        }
+        else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i])) {
             dsock->next_command[j++] = dsock->inbuf[i];
         }
     }
@@ -808,11 +827,12 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
         /* Check for a new Player */
         if ((p_new = load_profile(arg)) == NULL) {
             if (StackSize(dmobile_free) <= 0) {
-                if ((p_new = (D_MOBILE *) malloc(sizeof(*p_new))) == NULL) {
+                if ((p_new = (D_MOBILE *) malloc(sizeof (*p_new))) == NULL) {
                     bug("Handle_new_connection: Cannot allocate memory.");
                     abort();
                 }
-            } else {
+            }
+            else {
                 p_new = (D_MOBILE *) PopStack(dmobile_free);
             }
             clear_mobile(p_new);
@@ -823,7 +843,8 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
             /* prepare for next step */
             text_to_buffer(dsock, "Please enter a new password: ");
             dsock->state = STATE_NEW_PASSWORD;
-        } else /* old player */ {
+        }
+        else /* old player */ {
             /* prepare for next step */
             text_to_buffer(dsock, "What is your password? ");
             dsock->state = STATE_ASK_PASSWORD;
@@ -841,7 +862,7 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
         }
 
         free(dsock->player->password);
-        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
         dsock->player->password = strdup(crypt(arg, salt));
 
         /*
@@ -852,7 +873,7 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
          */
 
         if (0 == strncmp("*0", dsock->player->password, 2)
-                || 0 == strncmp("*1", dsock->player->password, 2)) {
+            || 0 == strncmp("*1", dsock->player->password, 2)) {
             text_to_buffer(dsock, "Illegal password!\n\rPlease enter a new password: ");
             return;
         }
@@ -861,7 +882,7 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
         dsock->state = STATE_VERIFY_PASSWORD;
         break;
     case STATE_VERIFY_PASSWORD:
-        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
         if (!strcmp(crypt(arg, salt), dsock->player->password)) {
             text_to_buffer(dsock, (char *) do_echo);
 
@@ -879,7 +900,8 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
             /* strip the idle event from this socket */
             strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-        } else {
+        }
+        else {
             free(dsock->player->password);
             dsock->player->password = NULL;
             text_to_buffer(dsock, "Password mismatch!\n\rPlease enter a new password: ");
@@ -888,7 +910,7 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
         break;
     case STATE_ASK_PASSWORD:
         text_to_buffer(dsock, (char *) do_echo);
-        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
         if (!strcmp(crypt(arg, salt), dsock->player->password)) {
             if ((p_new = check_reconnect(dsock->player->name)) != NULL) {
                 /* attach the new player */
@@ -904,13 +926,15 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
                 /* strip the idle event from this socket */
                 strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-            } else if ((p_new = load_player(dsock->player->name)) == NULL) {
+            }
+            else if ((p_new = load_player(dsock->player->name)) == NULL) {
                 text_to_socket(dsock, "ERROR: Your pfile is missing!\n\r");
                 free_mobile(dsock->player);
                 dsock->player = NULL;
                 close_socket(dsock, false);
                 return;
-            } else {
+            }
+            else {
                 /* attach the new player */
                 free_mobile(dsock->player);
                 dsock->player = p_new;
@@ -931,7 +955,8 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
                 /* strip the idle event from this socket */
                 strip_event_socket(dsock, EVENT_SOCKET_IDLE);
             }
-        } else {
+        }
+        else {
             text_to_socket(dsock, "Bad password!\n\r");
             free_mobile(dsock->player);
             dsock->player = NULL;
@@ -943,7 +968,7 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
 void clear_socket(D_SOCKET *sock_new, int sock)
 {
-    memset(sock_new, 0, sizeof(*sock_new));
+    memset(sock_new, 0, sizeof (*sock_new));
 
     sock_new->control = sock;
     sock_new->state = STATE_NEW_NAME;
@@ -964,7 +989,7 @@ void *lookup_address(void *arg)
     int rc;
 
     /* do the lookup and store the result at &from */
-    rc = getnameinfo(lData->sa, sizeof(lData->sa), hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NAMEREQD);
+    rc = getnameinfo(lData->sa, sizeof (lData->sa), hbuf, sizeof (hbuf), sbuf, sizeof (sbuf), NI_NAMEREQD);
 
     /* did we get anything ? */
     if (0 == rc) {
