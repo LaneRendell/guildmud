@@ -36,6 +36,13 @@ const unsigned char do_echo         [] = { IAC, WONT, TELOPT_ECHO,      '\0' };
 const unsigned char dont_echo       [] = { IAC, WILL, TELOPT_ECHO,      '\0' };
 const unsigned char gmcp_will       [] = { IAC, WILL, TELOPT_GMCP,      '\0' };
 
+/* msdp support*/
+/**
+ * Enable and disable MSDP telnet commands
+ */
+const unsigned char msdp_will	    [] = {IAC, WILL, TELOPT_MSDP,	'\0'};
+const unsigned char msdp_wont	    [] = {IAC, WONT, TELOPT_MSDP,	'\0'};
+
 /* local procedures */
 void GameLoop         ( int control );
 
@@ -308,6 +315,7 @@ bool new_socket(int sock)
   text_to_buffer(sock_new, (char *) compress_will2);
   text_to_buffer(sock_new, (char *) compress_will);
   text_to_buffer(sock_new, (char *) gmcp_will);
+  text_to_buffer(sock_new, (char *) msdp_will);
 
   /* send the greeting */
   text_to_buffer(sock_new, greeting);
@@ -486,7 +494,7 @@ bool text_to_socket(D_SOCKET *dsock, const char *txt)
  * Text_to_buffer()
  *
  * Stores outbound text in a buffer, where it will
- * stay untill it is flushed in the gameloop.
+ * stay until it is flushed in the gameloop.
  *
  * Will also parse ANSI colors and other tags.
  */

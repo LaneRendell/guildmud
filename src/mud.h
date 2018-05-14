@@ -211,7 +211,7 @@ extern const unsigned char compress_will2[];
 /***********************
  *    MSDP Support
  ***********************/
-#define TELOP_MSDP           69
+#define TELOPT_MSDP           69
 #define MSDP_VAR             1
 #define MSDP_VAL             2
 #define MSDP_TABLE_OPEN      3
@@ -219,7 +219,8 @@ extern const unsigned char compress_will2[];
 #define MSDP_ARRAY_OPEN      5
 #define MSDP_ARRAY_CLOSE     6
 
-extern const unsigned char mdsp_will[];
+extern const unsigned char msdp_will[];
+extern const unsigned char msdp_wont[];
 
 /***********************
  * End of MSDP support *
