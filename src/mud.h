@@ -124,7 +124,7 @@ struct dSocket
   z_stream      * out_compress;                /* MCCP support */
   unsigned char * out_compress_buf;            /* MCCP support */
   bool            gmcp_enabled;                /* GMCP support */
-  bool            mssp_enabled;                /* MSDP support */
+  bool            msdp_enabled;                /* MSDP support */
 };
 
 struct dMobile
@@ -329,6 +329,11 @@ bool  compressEnd             ( D_S *dsock, unsigned char teleopt, bool forced )
 bool gmcpEnable               ( D_S *dsock );
 bool gmcpSend                 ( D_S *dsock, const char *data );
 void gmcpReceived             ( D_S *dsock );
+
+/**
+ * msdp.c
+ */
+bool msdpEnable               (D_S *dsock);
 
 /*
  * save.c

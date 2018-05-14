@@ -744,12 +744,18 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
             else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
                 if (dsock->inbuf[i - 1] == (signed char) DO) {
                     log_string("Client supports and enabled MSDP.");
+                    if(!msdpEnable(dsock))
+                    {
+                        bug("msdp could not be enabled in DSOCK");
+                    }
                 }
                 else if (dsock->inbuf[i - 1] == (signed char) DONT) {
                     log_string("Client does not support MSDP.");
+                    text_to_buffer(dsock, (char *)msdp_wont);
+                    dsock->msdp_enabled = false;
                 }
-                else if (dsock->inbuff[i - 1] == (signed char) SB) {
-
+                else if (dsock->inbuf[i - 1] == (signed char) SB) {
+                    msdp = true;
                 }
             }
         }
