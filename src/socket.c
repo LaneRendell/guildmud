@@ -114,19 +114,20 @@ void GameLoop(int control)
             /* Is there a new command pending ? */
             if (dsock->next_command[0] != '\0') {
                 /* figure out how to deal with the incoming command */
-                switch (dsock->state) {
-                default:
-                    bug("Descriptor in bad state.");
-                    break;
-                case STATE_NEW_NAME:
-                case STATE_NEW_PASSWORD:
-                case STATE_VERIFY_PASSWORD:
-                case STATE_ASK_PASSWORD:
-                    handle_new_connections(dsock, dsock->next_command);
-                    break;
-                case STATE_PLAYING:
-                    handle_cmd_input(dsock, dsock->next_command);
-                    break;
+                switch (dsock->state)
+                {
+                    default:
+                        bug("Descriptor in bad state.");
+                        break;
+                    case STATE_NEW_NAME:
+                    case STATE_NEW_PASSWORD:
+                    case STATE_VERIFY_PASSWORD:
+                    case STATE_ASK_PASSWORD:
+                        handle_new_connections(dsock, dsock->next_command);
+                        break;
+                    case STATE_PLAYING:
+                        handle_cmd_input(dsock, dsock->next_command);
+                        break;
                 }
 
                 dsock->next_command[0] = '\0';
@@ -249,8 +250,7 @@ bool new_socket(int sock)
             bug("New_socket: Cannot allocate memory for socket.");
             abort();
         }
-    }
-    else {
+    } else {
         sock_new = (D_SOCKET *) PopStack(dsock_free);
     }
 
@@ -271,8 +271,7 @@ bool new_socket(int sock)
     if (getpeername(sock, (struct sockaddr *) &sock_addr, &size) < 0) {
         perror("New_socket: getpeername");
         sock_new->hostname = strdup("unknown");
-    }
-    else {
+    } else {
         /* set the IP number as the temporary hostname */
         sock_new->hostname = strdup(inet_ntoa(sock_addr.sin_addr));
 
@@ -289,8 +288,7 @@ bool new_socket(int sock)
 
             /* dispatch the lookup thread */
             pthread_create(&thread_lookup, &attr, &lookup_address, (void*) lData);
-        }
-        else sock_new->lookup_status++;
+        } else sock_new->lookup_status++;
     }
 
     /* negotiate compression */
@@ -337,8 +335,7 @@ void close_socket(D_SOCKET *dsock, bool reconnect)
             dsock->player->socket = NULL;
             log_string("Closing link to %s", dsock->player->name);
         }
-    }
-    else if (dsock->player)
+    } else if (dsock->player)
         free_mobile(dsock->player);
 
     /* dequeue all events for this socket */
@@ -371,7 +368,7 @@ bool read_from_socket(D_SOCKET *dsock)
     }
 
     /* start reading from the socket */
-    for (;;) {
+    for (; ; ) {
         int sInput;
         int wanted = sizeof (dsock->inbuf) - 2 - size;
 
@@ -382,12 +379,10 @@ bool read_from_socket(D_SOCKET *dsock)
 
             if (dsock->inbuf[size - 1] == '\n' || dsock->inbuf[size - 1] == '\r')
                 break;
-        }
-        else if (sInput == 0) {
+        } else if (sInput == 0) {
             log_string("Read_from_socket: EOF");
             return false;
-        }
-        else if (errno == EAGAIN || sInput == wanted)
+        } else if (errno == EAGAIN || sInput == wanted)
             break;
         else {
             perror("Read_from_socket");
@@ -474,12 +469,11 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
     int length = strlen(txt);
 
     /* the color struct */
-    struct sAnsiColor
-    {
+    struct sAnsiColor {
         const char cTag;
         const char * cString;
         int aFlag;
-    };
+    } ;
 
     /* the color table... */
     const struct sAnsiColor ansiTable[] = {
@@ -521,121 +515,120 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
         if (iPtr > (8 * MAX_BUFFER - 15))
             break;
 
-        switch (*txt) {
-        default:
-            output[iPtr++] = *txt++;
-            break;
-        case '#':
-            txt++;
-
-            /* toggle underline on/off with #u */
-            if (*txt == 'u') {
+        switch (*txt)
+        {
+            default:
+                output[iPtr++] = *txt++;
+                break;
+            case '#':
                 txt++;
-                if (underline) {
-                    underline = false;
-                    output[iPtr++] = 27;
-                    output[iPtr++] = '[';
-                    output[iPtr++] = '0';
-                    if (bold) {
-                        output[iPtr++] = ';';
-                        output[iPtr++] = '1';
-                    }
-                    if (last != -1) {
-                        output[iPtr++] = ';';
-                        for (j = 0; ansiTable[last].cString[j] != '\0'; j++) {
-                            output[iPtr++] = ansiTable[last].cString[j];
-                        }
-                    }
-                    output[iPtr++] = 'm';
-                }
-                else {
-                    underline = true;
-                    output[iPtr++] = 27;
-                    output[iPtr++] = '[';
-                    output[iPtr++] = '4';
-                    output[iPtr++] = 'm';
-                }
-            }/* parse ## to # */
-            else if (*txt == '#') {
-                txt++;
-                output[iPtr++] = '#';
-            }/* #n should clear all tags */
-            else if (*txt == 'n') {
-                txt++;
-                if (last != -1 || underline || bold) {
-                    underline = false;
-                    bold = false;
-                    output[iPtr++] = 27;
-                    output[iPtr++] = '[';
-                    output[iPtr++] = '0';
-                    output[iPtr++] = 'm';
-                }
 
-                last = -1;
-            }/* check for valid color tag and parse */
-            else {
-                bool validTag = false;
-
-                for (j = 0; ansiTable[j].cString[0] != '\0'; j++) {
-                    if (*txt == ansiTable[j].cTag) {
-                        validTag = true;
-
-                        /* we only add the color sequence if it's needed */
-                        if (last != j) {
-                            bool cSequence = false;
-
-                            /* escape sequence */
-                            output[iPtr++] = 27;
-                            output[iPtr++] = '[';
-
-                            /* remember if a color change is needed */
-                            if (last == -1 || last / 2 != j / 2)
-                                cSequence = true;
-
-                            /* handle font boldness */
-                            if (bold && ansiTable[j].aFlag == eTHIN) {
-                                output[iPtr++] = '0';
-                                bold = false;
-
-                                if (underline) {
-                                    output[iPtr++] = ';';
-                                    output[iPtr++] = '4';
-                                }
-
-                                /* changing to eTHIN wipes the old color */
-                                output[iPtr++] = ';';
-                                cSequence = true;
-                            }
-                            else if (!bold && ansiTable[j].aFlag == eBOLD) {
-                                output[iPtr++] = '1';
-                                bold = true;
-
-                                if (cSequence)
-                                    output[iPtr++] = ';';
-                            }
-
-                            /* add color sequence if needed */
-                            if (cSequence) {
-                                for (k = 0; ansiTable[j].cString[k] != '\0'; k++) {
-                                    output[iPtr++] = ansiTable[j].cString[k];
-                                }
-                            }
-
-                            output[iPtr++] = 'm';
-                        }
-
-                        /* remember the last color */
-                        last = j;
-                    }
-                }
-
-                /* it wasn't a valid color tag */
-                if (!validTag)
-                    output[iPtr++] = '#';
-                else
+                /* toggle underline on/off with #u */
+                if (*txt == 'u') {
                     txt++;
-            }
-            break;
+                    if (underline) {
+                        underline = false;
+                        output[iPtr++] = 27;
+                        output[iPtr++] = '[';
+                        output[iPtr++] = '0';
+                        if (bold) {
+                            output[iPtr++] = ';';
+                            output[iPtr++] = '1';
+                        }
+                        if (last != -1) {
+                            output[iPtr++] = ';';
+                            for (j = 0; ansiTable[last].cString[j] != '\0'; j++) {
+                                output[iPtr++] = ansiTable[last].cString[j];
+                            }
+                        }
+                        output[iPtr++] = 'm';
+                    } else {
+                        underline = true;
+                        output[iPtr++] = 27;
+                        output[iPtr++] = '[';
+                        output[iPtr++] = '4';
+                        output[iPtr++] = 'm';
+                    }
+                }/* parse ## to # */
+                else if (*txt == '#') {
+                    txt++;
+                    output[iPtr++] = '#';
+                }/* #n should clear all tags */
+                else if (*txt == 'n') {
+                    txt++;
+                    if (last != -1 || underline || bold) {
+                        underline = false;
+                        bold = false;
+                        output[iPtr++] = 27;
+                        output[iPtr++] = '[';
+                        output[iPtr++] = '0';
+                        output[iPtr++] = 'm';
+                    }
+
+                    last = -1;
+                }/* check for valid color tag and parse */
+                else {
+                    bool validTag = false;
+
+                    for (j = 0; ansiTable[j].cString[0] != '\0'; j++) {
+                        if (*txt == ansiTable[j].cTag) {
+                            validTag = true;
+
+                            /* we only add the color sequence if it's needed */
+                            if (last != j) {
+                                bool cSequence = false;
+
+                                /* escape sequence */
+                                output[iPtr++] = 27;
+                                output[iPtr++] = '[';
+
+                                /* remember if a color change is needed */
+                                if (last == -1 || last / 2 != j / 2)
+                                    cSequence = true;
+
+                                /* handle font boldness */
+                                if (bold && ansiTable[j].aFlag == eTHIN) {
+                                    output[iPtr++] = '0';
+                                    bold = false;
+
+                                    if (underline) {
+                                        output[iPtr++] = ';';
+                                        output[iPtr++] = '4';
+                                    }
+
+                                    /* changing to eTHIN wipes the old color */
+                                    output[iPtr++] = ';';
+                                    cSequence = true;
+                                } else if (!bold && ansiTable[j].aFlag == eBOLD) {
+                                    output[iPtr++] = '1';
+                                    bold = true;
+
+                                    if (cSequence)
+                                        output[iPtr++] = ';';
+                                }
+
+                                /* add color sequence if needed */
+                                if (cSequence) {
+                                    for (k = 0; ansiTable[j].cString[k] != '\0'; k++) {
+                                        output[iPtr++] = ansiTable[j].cString[k];
+                                    }
+                                }
+
+                                output[iPtr++] = 'm';
+                            }
+
+                            /* remember the last color */
+                            last = j;
+                        }
+                    }
+
+                    /* it wasn't a valid color tag */
+                    if (!validTag)
+                        output[iPtr++] = '#';
+                    else
+                        txt++;
+                }
+                break;
         }
     }
 
@@ -673,9 +666,17 @@ void text_to_mobile(D_MOBILE *dMob, const char *txt)
     }
 }
 
+/**
+ * next_cmd_from_buffer(DSOCKET *dsock)
+ * 
+ * @brief Parses the next command and executes the corresponding instruction.
+ * 
+ * @param DSOCKET *dsock The client socket that we get the inbuffer from.
+ * @return void
+ */
 void next_cmd_from_buffer(D_SOCKET *dsock)
 {
-    int size = 0, i = 0, j = 0, telopt = 0;
+    int size = 0, i = 0, j = 0, teloptIndex = 0;
     bool gmcp = false;
     bool msdp = false;
 
@@ -698,68 +699,70 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
     /* copy the next command into next_command */
     for (; i < size; i++) {
         if (dsock->inbuf[i] == (signed char) IAC) {
-            telopt = 1;
-        }
-        else if (telopt == 1
-         && (dsock->inbuf[i] == (signed char) DO
-         || dsock->inbuf[i] == (signed char) DONT
-         || dsock->inbuf[i] == (signed char) SB)) {
-            telopt = 2;
-        }
-        else if (telopt == 1 && gmcp && dsock->inbuf[i] == (signed char) SE) {
-            telopt = 0;
+            teloptIndex = 1;
+        } else if (teloptIndex == 1
+                && (dsock->inbuf[i] == (signed char) DO
+                || dsock->inbuf[i] == (signed char) DONT
+                || dsock->inbuf[i] == (signed char) SB)) {
+            
+            teloptIndex = 2;
+            
+        } else if (teloptIndex == 1 && gmcp && dsock->inbuf[i] == (signed char) SE) {
+            
+            teloptIndex = 0;
             gmcp = false;
             dsock->next_command[j] = '\0';
             gmcpReceived(dsock);
             dsock->next_command[j = 0] = '\0';
-        }
-        else if (telopt == 1 && msdp && dsock->inbuf[i] == (signed char) SE) {
-            telopt = 0;
+            
+        } else if (teloptIndex == 1 && msdp && dsock->inbuf[i] == (signed char) SE) {
+            
+            teloptIndex = 0;
             msdp = false;
             dsock->next_command[j] = '\0';
             dsock->next_command[j = 0] = '\0';
-        }
-        else if (telopt == 2) {
-            telopt = 0;
+            
+        } else if (teloptIndex == 2) {
+            teloptIndex = 0;
 
             if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS) /* check for version 1 */ {
                 if (dsock->inbuf[i - 1] == (signed char) DO) /* start compressing   */
                     compressStart(dsock, TELOPT_COMPRESS);
                 else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS, false);
-            }
-            else if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS2) /* check for version 2 */ {
+                
+            } else if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS2) /* check for version 2 */ {
+                
                 if (dsock->inbuf[i - 1] == (signed char) DO) /* start compressing   */
                     compressStart(dsock, TELOPT_COMPRESS2);
                 else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS2, false);
-            }
-            else if (dsock->inbuf[i] == (signed char) TELOPT_GMCP) /* check for gmcp */ {
+                
+            } else if (dsock->inbuf[i] == (signed char) TELOPT_GMCP) /* check for gmcp */ {
+                
                 if (dsock->inbuf[i - 1] == (signed char) DO)
                     gmcpEnable(dsock);
                 else if (dsock->inbuf[i - 1] == (signed char) SB) {
                     gmcp = true;
                 }
-            }
-            else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
+                
+            } else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
+                
                 if (dsock->inbuf[i - 1] == (signed char) DO) {
                     log_string("Client supports and enabled MSDP.");
-                    if(!msdpEnable(dsock))
-                    {
+                    if (!msdpEnable(dsock)) {
                         bug("msdp could not be enabled in DSOCK");
                     }
-                }
-                else if (dsock->inbuf[i - 1] == (signed char) DONT) {
+                } else if (dsock->inbuf[i - 1] == (signed char) DONT) {
                     log_string("Client does not support MSDP.");
-                    text_to_buffer(dsock, (char *)msdp_wont);
+                    text_to_buffer(dsock, (char *) msdp_wont);
                     dsock->msdp_enabled = false;
-                }
-                else if (dsock->inbuf[i - 1] == (signed char) SB) {
+                } else if (dsock->inbuf[i - 1] == (signed char) SB) {
                     msdp = true;
                 }
+                
             }
-        }
-        else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i])) {
+        } else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i])) {
             dsock->next_command[j++] = dsock->inbuf[i];
         }
     }
@@ -814,144 +817,89 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
     char salt[MAX_BUFFER];
     char *pepper = "PnLEkiA888KDMlRcVDtqlGcv9bsv1E"; /* a global salt (a pepper) to hash all the passwords. */
 
-    switch (dsock->state) {
-    default:
-        bug("Handle_new_connections: Bad state.");
-        break;
-    case STATE_NEW_NAME:
-        if (dsock->lookup_status != TSTATE_DONE) {
-            text_to_buffer(dsock, "Making a dns lookup, please have patience.\n\rWhat is your name? ");
-            return;
-        }
-        if (!check_name(arg)) /* check for a legal name */ {
-            text_to_buffer(dsock, "Sorry, that's not a legal name, please pick another.\n\rWhat is your name? ");
+    switch (dsock->state)
+    {
+        default:
+            bug("Handle_new_connections: Bad state.");
             break;
-        }
-        arg[0] = toupper(arg[0]);
-        log_string("%s is trying to connect.", arg);
-
-        /* Check for a new Player */
-        if ((p_new = load_profile(arg)) == NULL) {
-            if (StackSize(dmobile_free) <= 0) {
-                if ((p_new = (D_MOBILE *) malloc(sizeof (*p_new))) == NULL) {
-                    bug("Handle_new_connection: Cannot allocate memory.");
-                    abort();
-                }
-            }
-            else {
-                p_new = (D_MOBILE *) PopStack(dmobile_free);
-            }
-            clear_mobile(p_new);
-
-            /* give the player it's name */
-            p_new->name = strdup(arg);
-
-            /* prepare for next step */
-            text_to_buffer(dsock, "Please enter a new password: ");
-            dsock->state = STATE_NEW_PASSWORD;
-        }
-        else /* old player */ {
-            /* prepare for next step */
-            text_to_buffer(dsock, "What is your password? ");
-            dsock->state = STATE_ASK_PASSWORD;
-        }
-        text_to_buffer(dsock, (char *) dont_echo);
-
-        /* socket <-> player */
-        p_new->socket = dsock;
-        dsock->player = p_new;
-        break;
-    case STATE_NEW_PASSWORD:
-        if (strlen(arg) < 5 || strlen(arg) >= 256) {
-            text_to_buffer(dsock, "Between 5 and 256 chars please!\n\rPlease enter a new password: ");
-            return;
-        }
-
-        free(dsock->player->password);
-        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-        dsock->player->password = strdup(crypt(arg, salt));
-
-        /*
-         * We check our encrypted password is not "*0" or "*1".
-         * This is one of the ways the blowcrypt API signals some
-         * internal error.
-         * 
-         */
-
-        if (0 == strncmp("*0", dsock->player->password, 2)
-            || 0 == strncmp("*1", dsock->player->password, 2)) {
-            text_to_buffer(dsock, "Illegal password!\n\rPlease enter a new password: ");
-            return;
-        }
-
-        text_to_buffer(dsock, "Please verify the password: ");
-        dsock->state = STATE_VERIFY_PASSWORD;
-        break;
-    case STATE_VERIFY_PASSWORD:
-        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-        if (!strcmp(crypt(arg, salt), dsock->player->password)) {
-            text_to_buffer(dsock, (char *) do_echo);
-
-            /* put him in the list */
-            AttachToList(dsock->player, dmobile_list);
-
-            log_string("New player: %s has entered the game.", dsock->player->name);
-
-            /* and into the game */
-            dsock->state = STATE_PLAYING;
-            text_to_buffer(dsock, motd);
-
-            /* initialize events on the player */
-            init_events_player(dsock->player);
-
-            /* strip the idle event from this socket */
-            strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-        }
-        else {
-            free(dsock->player->password);
-            dsock->player->password = NULL;
-            text_to_buffer(dsock, "Password mismatch!\n\rPlease enter a new password: ");
-            dsock->state = STATE_NEW_PASSWORD;
-        }
-        break;
-    case STATE_ASK_PASSWORD:
-        text_to_buffer(dsock, (char *) do_echo);
-        snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-        if (!strcmp(crypt(arg, salt), dsock->player->password)) {
-            if ((p_new = check_reconnect(dsock->player->name)) != NULL) {
-                /* attach the new player */
-                free_mobile(dsock->player);
-                dsock->player = p_new;
-                p_new->socket = dsock;
-
-                log_string("%s has reconnected.", dsock->player->name);
-
-                /* and let him enter the game */
-                dsock->state = STATE_PLAYING;
-                text_to_buffer(dsock, "You take over a body already in use.\n\r");
-
-                /* strip the idle event from this socket */
-                strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-            }
-            else if ((p_new = load_player(dsock->player->name)) == NULL) {
-                text_to_socket(dsock, "ERROR: Your pfile is missing!\n\r");
-                free_mobile(dsock->player);
-                dsock->player = NULL;
-                close_socket(dsock, false);
+        case STATE_NEW_NAME:
+            if (dsock->lookup_status != TSTATE_DONE) {
+                text_to_buffer(dsock, "Making a dns lookup, please have patience.\n\rWhat is your name? ");
                 return;
             }
-            else {
-                /* attach the new player */
-                free_mobile(dsock->player);
-                dsock->player = p_new;
-                p_new->socket = dsock;
+            if (!check_name(arg)) /* check for a legal name */ {
+                text_to_buffer(dsock, "Sorry, that's not a legal name, please pick another.\n\rWhat is your name? ");
+                break;
+            }
+            arg[0] = toupper(arg[0]);
+            log_string("%s is trying to connect.", arg);
 
-                /* put him in the active list */
-                AttachToList(p_new, dmobile_list);
+            /* Check for a new Player */
+            if ((p_new = load_profile(arg)) == NULL) {
+                if (StackSize(dmobile_free) <= 0) {
+                    if ((p_new = (D_MOBILE *) malloc(sizeof (*p_new))) == NULL) {
+                        bug("Handle_new_connection: Cannot allocate memory.");
+                        abort();
+                    }
+                } else {
+                    p_new = (D_MOBILE *) PopStack(dmobile_free);
+                }
+                clear_mobile(p_new);
 
-                log_string("%s has entered the game.", dsock->player->name);
+                /* give the player it's name */
+                p_new->name = strdup(arg);
 
-                /* and let him enter the game */
+                /* prepare for next step */
+                text_to_buffer(dsock, "Please enter a new password: ");
+                dsock->state = STATE_NEW_PASSWORD;
+            } else /* old player */ {
+                /* prepare for next step */
+                text_to_buffer(dsock, "What is your password? ");
+                dsock->state = STATE_ASK_PASSWORD;
+            }
+            text_to_buffer(dsock, (char *) dont_echo);
+
+            /* socket <-> player */
+            p_new->socket = dsock;
+            dsock->player = p_new;
+            break;
+        case STATE_NEW_PASSWORD:
+            if (strlen(arg) < 5 || strlen(arg) >= 256) {
+                text_to_buffer(dsock, "Between 5 and 256 chars please!\n\rPlease enter a new password: ");
+                return;
+            }
+
+            free(dsock->player->password);
+            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+            dsock->player->password = strdup(crypt(arg, salt));
+
+            /*
+             * We check our encrypted password is not "*0" or "*1".
+             * This is one of the ways the blowcrypt API signals some
+             * internal error.
+             * 
+             */
+
+            if (0 == strncmp("*0", dsock->player->password, 2)
+                    || 0 == strncmp("*1", dsock->player->password, 2)) {
+                text_to_buffer(dsock, "Illegal password!\n\rPlease enter a new password: ");
+                return;
+            }
+
+            text_to_buffer(dsock, "Please verify the password: ");
+            dsock->state = STATE_VERIFY_PASSWORD;
+            break;
+        case STATE_VERIFY_PASSWORD:
+            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+            if (!strcmp(crypt(arg, salt), dsock->player->password)) {
+                text_to_buffer(dsock, (char *) do_echo);
+
+                /* put him in the list */
+                AttachToList(dsock->player, dmobile_list);
+
+                log_string("New player: %s has entered the game.", dsock->player->name);
+
+                /* and into the game */
                 dsock->state = STATE_PLAYING;
                 text_to_buffer(dsock, motd);
 
@@ -960,15 +908,65 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
                 /* strip the idle event from this socket */
                 strip_event_socket(dsock, EVENT_SOCKET_IDLE);
+            } else {
+                free(dsock->player->password);
+                dsock->player->password = NULL;
+                text_to_buffer(dsock, "Password mismatch!\n\rPlease enter a new password: ");
+                dsock->state = STATE_NEW_PASSWORD;
             }
-        }
-        else {
-            text_to_socket(dsock, "Bad password!\n\r");
-            free_mobile(dsock->player);
-            dsock->player = NULL;
-            close_socket(dsock, false);
-        }
-        break;
+            break;
+        case STATE_ASK_PASSWORD:
+            text_to_buffer(dsock, (char *) do_echo);
+            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+            if (!strcmp(crypt(arg, salt), dsock->player->password)) {
+                if ((p_new = check_reconnect(dsock->player->name)) != NULL) {
+                    /* attach the new player */
+                    free_mobile(dsock->player);
+                    dsock->player = p_new;
+                    p_new->socket = dsock;
+
+                    log_string("%s has reconnected.", dsock->player->name);
+
+                    /* and let him enter the game */
+                    dsock->state = STATE_PLAYING;
+                    text_to_buffer(dsock, "You take over a body already in use.\n\r");
+
+                    /* strip the idle event from this socket */
+                    strip_event_socket(dsock, EVENT_SOCKET_IDLE);
+                } else if ((p_new = load_player(dsock->player->name)) == NULL) {
+                    text_to_socket(dsock, "ERROR: Your pfile is missing!\n\r");
+                    free_mobile(dsock->player);
+                    dsock->player = NULL;
+                    close_socket(dsock, false);
+                    return;
+                } else {
+                    /* attach the new player */
+                    free_mobile(dsock->player);
+                    dsock->player = p_new;
+                    p_new->socket = dsock;
+
+                    /* put him in the active list */
+                    AttachToList(p_new, dmobile_list);
+
+                    log_string("%s has entered the game.", dsock->player->name);
+
+                    /* and let him enter the game */
+                    dsock->state = STATE_PLAYING;
+                    text_to_buffer(dsock, motd);
+
+                    /* initialize events on the player */
+                    init_events_player(dsock->player);
+
+                    /* strip the idle event from this socket */
+                    strip_event_socket(dsock, EVENT_SOCKET_IDLE);
+                }
+            } else {
+                text_to_socket(dsock, "Bad password!\n\r");
+                free_mobile(dsock->player);
+                dsock->player = NULL;
+                close_socket(dsock, false);
+            }
+            break;
     }
 }
 

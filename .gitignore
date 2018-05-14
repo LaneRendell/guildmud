@@ -11,3 +11,4 @@ Info.plist
 /tags
 /.vimrc
 /nbproject
+*.vscode/
