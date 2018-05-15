@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <arpa/telnet.h>
 #include <sqlite3.h>
+#include <stdio.h>
 
 #include "list.h"
 #include "stack.h"

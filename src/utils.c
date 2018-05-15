@@ -10,9 +10,17 @@
 #include <unistd.h>
 #include <stdbool.h>
 
-
 /* include main header file */
 #include "mud.h"
+
+/* Handy bitwise manipulations */
+#define HAS_BIT(var, mask) ((var) & (mask))
+#define SET_BIT(var, mask) ((var) |= (mask))
+#define CLEAR_BIT(var, mask) ((var) &= (mask))
+#define FLIP_BIT(var, mask) ((var) ^= (mask))
+
+/* A pointer to a handler function */
+typedef void (*Handler)(void);
 
 /*
  * Check to see if a given name is
@@ -21,84 +29,88 @@
  */
 bool check_name(const char *name)
 {
-  int size, i;
+    int size, i;
 
-  if ((size = strlen(name)) < 3 || size > 12)
-    return false;
+    if ((size = strlen(name)) < 3 || size > 12)
+        return false;
 
-  for (i = 0 ;i < size; i++)
-    if (!isalpha(name[i])) return false;
+    for (i = 0; i < size; i++)
+        if (!isalpha(name[i]))
+            return false;
 
-  return true;
+    return true;
 }
 
 void clear_mobile(D_MOBILE *dMob)
 {
-  memset(dMob, 0, sizeof(*dMob));
+    memset(dMob, 0, sizeof(*dMob));
 
-  dMob->name         =  NULL;
-  dMob->password     =  NULL;
-  dMob->level        =  LEVEL_PLAYER;
-  dMob->events       =  AllocList();
+    dMob->name = NULL;
+    dMob->password = NULL;
+    dMob->level = LEVEL_PLAYER;
+    dMob->events = AllocList();
 }
 
 void free_mobile(D_MOBILE *dMob)
 {
-  EVENT_DATA *pEvent;
-  ITERATOR Iter;
+    EVENT_DATA *pEvent;
+    ITERATOR Iter;
 
-  DetachFromList(dMob, dmobile_list);
+    DetachFromList(dMob, dmobile_list);
 
-  if (dMob->socket) dMob->socket->player = NULL;
+    if (dMob->socket)
+        dMob->socket->player = NULL;
 
-  AttachIterator(&Iter, dMob->events);
-  while ((pEvent = (EVENT_DATA *) NextInList(&Iter)) != NULL)
-    dequeue_event(pEvent);
-  DetachIterator(&Iter);
-  FreeList(dMob->events);
+    AttachIterator(&Iter, dMob->events);
+    while ((pEvent = (EVENT_DATA *)NextInList(&Iter)) != NULL)
+        dequeue_event(pEvent);
+    DetachIterator(&Iter);
+    FreeList(dMob->events);
 
-  /* free allocated memory */
-  free(dMob->name);
-  free(dMob->password);
+    /* free allocated memory */
+    free(dMob->name);
+    free(dMob->password);
 
-  PushStack(dMob, dmobile_free);
+    PushStack(dMob, dmobile_free);
 }
 
 void communicate(D_MOBILE *dMob, char *txt, int range)
 {
-  D_MOBILE *xMob;
-  ITERATOR Iter;
-  char buf[MAX_BUFFER];
-  char message[MAX_BUFFER];
+    D_MOBILE *xMob;
+    ITERATOR Iter;
+    char buf[MAX_BUFFER];
+    char message[MAX_BUFFER];
 
-  switch(range)
-  {
+    switch (range)
+    {
     default:
-      bug("Communicate: Bad Range %d.", range);
-      return;
-    case COMM_LOCAL:  /* everyone is in the same room for now... */
-      snprintf(message, MAX_BUFFER, "%s says '%s'.\n\r", dMob->name, txt);
-      snprintf(buf, MAX_BUFFER, "You say '%s'.\n\r", txt);
-      text_to_mobile(dMob, buf);
-      AttachIterator(&Iter, dmobile_list);
-      while ((xMob = (D_MOBILE *) NextInList(&Iter)) != NULL)
-      {
-        if (xMob == dMob) continue;
-        text_to_mobile(xMob, message);
-      }
-      DetachIterator(&Iter);
-      break;
+        bug("Communicate: Bad Range %d.", range);
+        return;
+    case COMM_LOCAL: /* everyone is in the same room for now... */
+        snprintf(message, MAX_BUFFER, "%s says '%s'.\n\r", dMob->name, txt);
+        snprintf(buf, MAX_BUFFER, "You say '%s'.\n\r", txt);
+        text_to_mobile(dMob, buf);
+        AttachIterator(&Iter, dmobile_list);
+        while ((xMob = (D_MOBILE *)NextInList(&Iter)) != NULL)
+        {
+            if (xMob == dMob)
+                continue;
+            text_to_mobile(xMob, message);
+        }
+        DetachIterator(&Iter);
+        break;
     case COMM_LOG:
-      snprintf(message, MAX_BUFFER, "[LOG: %s]\n\r", txt);
-      AttachIterator(&Iter, dmobile_list);
-      while ((xMob = (D_MOBILE *) NextInList(&Iter)) != NULL)
-      {
-        if (!IS_ADMIN(xMob)) continue;
-        text_to_mobile(xMob, message);
-      }
-      DetachIterator(&Iter);
-      break;
-  }
+        snprintf(message, MAX_BUFFER, "[LOG: %s]\n\r", txt);
+        AttachIterator(&Iter, dmobile_list);
+        while ((xMob = (D_MOBILE *)NextInList(&Iter)) != NULL)
+        {
+            if (!IS_ADMIN(xMob))
+                continue;
+            text_to_mobile(xMob, message);
+        }
+        DetachIterator(&Iter);
+        break;
+    }
 }
 
 /*
@@ -106,130 +118,130 @@ void communicate(D_MOBILE *dMob, char *txt, int range)
  */
 void load_muddata(bool fCopyOver)
 {
-  load_helps();
+    load_helps();
 
-  /* copyover */
-  if (fCopyOver)
-    copyover_recover();
+    /* copyover */
+    if (fCopyOver)
+        copyover_recover();
 }
 
 char *get_timestamp()
 {
-  static char buf[26];
-  struct tm* tm_info;
+    static char buf[26];
+    struct tm *tm_info;
 
-  tm_info = localtime(&current_time);
+    tm_info = localtime(&current_time);
 
-  strftime(buf, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+    strftime(buf, 26, "%Y-%m-%d %H:%M:%S", tm_info);
 
-  return buf;
+    return buf;
 }
 
 char *get_date()
 {
-  static char buf[26];
-  struct tm* tm_info;
+    static char buf[26];
+    struct tm *tm_info;
 
-  tm_info = localtime(&current_time);
+    tm_info = localtime(&current_time);
 
-  strftime(buf, 26, "%Y-%m-%d", tm_info);
+    strftime(buf, 26, "%Y-%m-%d", tm_info);
 
-  return buf;
+    return buf;
 }
 
 /* Recover from a copyover - load players */
 void copyover_recover()
 {
-  D_MOBILE *dMob;
-  D_SOCKET *dsock;
-  FILE *fp;
-  char name [100];
-  char host[MAX_BUFFER];
-  int desc;
+    D_MOBILE *dMob;
+    D_SOCKET *dsock;
+    FILE *fp;
+    char name[100];
+    char host[MAX_BUFFER];
+    int desc;
 
-  log_string("Copyover recovery initiated");
+    log_string("Copyover recovery initiated");
 
-  if ((fp = fopen(COPYOVER_FILE, "r")) == NULL)
-  {
-    log_string("Copyover file not found. Exitting.");
-    exit (1);
-  }
-
-  /* In case something crashes - doesn't prevent reading */
-  unlink(COPYOVER_FILE);
-
-  for (;;)
-  {
-    fscanf(fp, "%d %s %s\n", &desc, name, host);
-    if (desc == -1)
-      break;
-
-    dsock = (D_SOCKET *) malloc(sizeof(*dsock));
-    clear_socket(dsock, desc);
-
-    dsock->hostname     =  strdup(host);
-    AttachToList(dsock, dsock_list);
-
-    /* load player data */
-    if ((dMob = load_player(name)) != NULL)
+    if ((fp = fopen(COPYOVER_FILE, "r")) == NULL)
     {
-      /* attach to socket */
-      dMob->socket     =  dsock;
-      dsock->player    =  dMob;
-
-      /* attach to mobile list */
-      AttachToList(dMob, dmobile_list);
-
-      /* initialize events on the player */
-      init_events_player(dMob);
-    }
-    else /* ah bugger */
-    {
-      close_socket(dsock, false);
-      continue;
+        log_string("Copyover file not found. Exitting.");
+        exit(1);
     }
 
-    /* Write something, and check if it goes error-free */
-    if (!text_to_socket(dsock, "\n\r <*>  And before you know it, everything has changed  <*>\n\r"))
+    /* In case something crashes - doesn't prevent reading */
+    unlink(COPYOVER_FILE);
+
+    for (;;)
     {
-      close_socket(dsock, false);
-      continue;
+        fscanf(fp, "%d %s %s\n", &desc, name, host);
+        if (desc == -1)
+            break;
+
+        dsock = (D_SOCKET *)malloc(sizeof(*dsock));
+        clear_socket(dsock, desc);
+
+        dsock->hostname = strdup(host);
+        AttachToList(dsock, dsock_list);
+
+        /* load player data */
+        if ((dMob = load_player(name)) != NULL)
+        {
+            /* attach to socket */
+            dMob->socket = dsock;
+            dsock->player = dMob;
+
+            /* attach to mobile list */
+            AttachToList(dMob, dmobile_list);
+
+            /* initialize events on the player */
+            init_events_player(dMob);
+        }
+        else /* ah bugger */
+        {
+            close_socket(dsock, false);
+            continue;
+        }
+
+        /* Write something, and check if it goes error-free */
+        if (!text_to_socket(dsock, "\n\r <*>  And before you know it, everything has changed  <*>\n\r"))
+        {
+            close_socket(dsock, false);
+            continue;
+        }
+
+        /* make sure the socket can be used */
+        dsock->bust_prompt = true;
+        dsock->lookup_status = TSTATE_DONE;
+        dsock->state = STATE_PLAYING;
+
+        /* negotiate compression */
+        text_to_buffer(dsock, (char *)compress_will2);
+        text_to_buffer(dsock, (char *)compress_will);
+
+        /* negotiate MDSP */
+        text_to_buffer(dsock, (char *)msdp_will);
     }
-
-    /* make sure the socket can be used */
-    dsock->bust_prompt    =  true;
-    dsock->lookup_status  =  TSTATE_DONE;
-    dsock->state          =  STATE_PLAYING;
-
-    /* negotiate compression */
-    text_to_buffer(dsock, (char *) compress_will2);
-    text_to_buffer(dsock, (char *) compress_will);
-    
-    /* negotiate MDSP */
-    text_to_buffer(dsock, (char *) msdp_will);
-  }
-  fclose(fp);
+    fclose(fp);
 }
 
 D_MOBILE *check_reconnect(char *player)
 {
-  D_MOBILE *dMob;
-  ITERATOR Iter;
+    D_MOBILE *dMob;
+    ITERATOR Iter;
 
-  AttachIterator(&Iter, dmobile_list);
-  while ((dMob = (D_MOBILE *) NextInList(&Iter)) != NULL)
-  {
-    if (!strcasecmp(dMob->name, player))
+    AttachIterator(&Iter, dmobile_list);
+    while ((dMob = (D_MOBILE *)NextInList(&Iter)) != NULL)
     {
-      if (dMob->socket)
-      {
-        close_socket(dMob->socket, true);
-      }
+        if (!strcasecmp(dMob->name, player))
+        {
+            if (dMob->socket)
+            {
+                close_socket(dMob->socket, true);
+            }
 
-      break;
+            break;
+        }
     }
-  }
-  DetachIterator(&Iter);
+    DetachIterator(&Iter);
 
-  return dMob;
+    return dMob;
 }
