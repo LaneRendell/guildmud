@@ -23,27 +23,50 @@
 #include "mud.h"
 
 /* global variables */
-fd_set fSet; /* the socket list for polling       */
-STACK * dsock_free = NULL; /* the socket free list              */
-LIST * dsock_list = NULL; /* the linked list of active sockets */
-STACK * dmobile_free = NULL; /* the mobile free list              */
-LIST * dmobile_list = NULL; /* the mobile list of active mobiles */
+fd_set fSet;                /* the socket list for polling       */
+STACK *dsock_free = NULL;   /* the socket free list              */
+LIST *dsock_list = NULL;    /* the linked list of active sockets */
+STACK *dmobile_free = NULL; /* the mobile free list              */
+LIST *dmobile_list = NULL;  /* the mobile list of active mobiles */
+
+/**
+ * Dunno maybe we should make a list of defines or something...?
+ */
+struct telnetValToString
+{
+    u_int8_t val;     // What the command is in number form
+    const char *name; // The name in human readable format.
+};
+
+struct telnetValToString telnetCommands[] =
+    {
+        {DO, "DO"},
+        {DONT, "DONT"},
+        {IAC, "IAC"},
+        {WILL, "WILL"},
+        {WONT, "WONT"},
+        {SB, "SB"},
+        {SE, "SE"},
+        {MSDP_VAL, "MSDP_VAL"},
+        {MSDP_VAR, "MSDP_VAR"},
+        {-1, "\0"}};
 
 /* mccp support */
-const unsigned char compress_will [] = {IAC, WILL, TELOPT_COMPRESS, '\0'};
-const unsigned char compress_will2 [] = {IAC, WILL, TELOPT_COMPRESS2, '\0'};
-const unsigned char do_echo [] = {IAC, WONT, TELOPT_ECHO, '\0'};
-const unsigned char dont_echo [] = {IAC, WILL, TELOPT_ECHO, '\0'};
-const unsigned char gmcp_will [] = {IAC, WILL, TELOPT_GMCP, '\0'};
+const unsigned char compress_will[] = {IAC, WILL, TELOPT_COMPRESS, '\0'};
+const unsigned char compress_will2[] = {IAC, WILL, TELOPT_COMPRESS2, '\0'};
+const unsigned char do_echo[] = {IAC, WONT, TELOPT_ECHO, '\0'};
+const unsigned char dont_echo[] = {IAC, WILL, TELOPT_ECHO, '\0'};
+const unsigned char gmcp_will[] = {IAC, WILL, TELOPT_GMCP, '\0'};
 
 /**
  * Enable and disable MSDP telnet commands
  */
-const unsigned char msdp_will [] = {IAC, WILL, TELOPT_MSDP, '\0'};
-const unsigned char msdp_wont [] = {IAC, WONT, TELOPT_MSDP, '\0'};
+const unsigned char msdp_will[] = {IAC, WILL, TELOPT_MSDP, '\0'};
+const unsigned char msdp_wont[] = {IAC, WONT, TELOPT_MSDP, '\0'};
 
 /* local procedures */
 void GameLoop(int control);
+void telnetCmdToString(char *playerInBuff);
 
 /* intialize shutdown state */
 bool shut_down = false;
@@ -70,40 +93,44 @@ void GameLoop(int control)
 
     /* copyover recovery */
     AttachIterator(&Iter, dsock_list);
-    while ((dsock = (D_SOCKET *) NextInList(&Iter)) != NULL)
+    while ((dsock = (D_SOCKET *)NextInList(&Iter)) != NULL)
         FD_SET(dsock->control, &fSet);
     DetachIterator(&Iter);
 
     /* do this untill the program is shutdown */
-    while (!shut_down) {
+    while (!shut_down)
+    {
         /* set current_time */
         current_time = time(NULL);
 
         /* copy the socket set */
-        memcpy(&rFd, &fSet, sizeof (fd_set));
+        memcpy(&rFd, &fSet, sizeof(fd_set));
 
         /* wait for something to happen */
         if (select(FD_SETSIZE, &rFd, NULL, NULL, &tv) < 0)
             continue;
 
         /* check for new connections */
-        if (FD_ISSET(control, &rFd)) {
+        if (FD_ISSET(control, &rFd))
+        {
             struct sockaddr_in sock;
             unsigned int socksize;
             int newConnection;
 
-            socksize = sizeof (sock);
-            if ((newConnection = accept(control, (struct sockaddr*) &sock, &socksize)) >= 0)
+            socksize = sizeof(sock);
+            if ((newConnection = accept(control, (struct sockaddr *)&sock, &socksize)) >= 0)
                 new_socket(newConnection);
         }
 
         /* poll sockets in the socket list */
         AttachIterator(&Iter, dsock_list);
-        while ((dsock = (D_SOCKET *) NextInList(&Iter)) != NULL) {
+        while ((dsock = (D_SOCKET *)NextInList(&Iter)) != NULL)
+        {
             /*
-             * Close sockects we are unable to read from.
+             * Close sockets we are unable to read from.
              */
-            if (FD_ISSET(dsock->control, &rFd) && !read_from_socket(dsock)) {
+            if (FD_ISSET(dsock->control, &rFd) && !read_from_socket(dsock))
+            {
                 close_socket(dsock, false);
                 continue;
             }
@@ -112,29 +139,31 @@ void GameLoop(int control)
             next_cmd_from_buffer(dsock);
 
             /* Is there a new command pending ? */
-            if (dsock->next_command[0] != '\0') {
+            if (dsock->next_command[0] != '\0')
+            {
                 /* figure out how to deal with the incoming command */
                 switch (dsock->state)
                 {
-                    default:
-                        bug("Descriptor in bad state.");
-                        break;
-                    case STATE_NEW_NAME:
-                    case STATE_NEW_PASSWORD:
-                    case STATE_VERIFY_PASSWORD:
-                    case STATE_ASK_PASSWORD:
-                        handle_new_connections(dsock, dsock->next_command);
-                        break;
-                    case STATE_PLAYING:
-                        handle_cmd_input(dsock, dsock->next_command);
-                        break;
+                default:
+                    bug("Descriptor in bad state.");
+                    break;
+                case STATE_NEW_NAME:
+                case STATE_NEW_PASSWORD:
+                case STATE_VERIFY_PASSWORD:
+                case STATE_ASK_PASSWORD:
+                    handle_new_connections(dsock, dsock->next_command);
+                    break;
+                case STATE_PLAYING:
+                    handle_cmd_input(dsock, dsock->next_command);
+                    break;
                 }
 
                 dsock->next_command[0] = '\0';
             }
 
             /* if the player quits or get's disconnected */
-            if (dsock->state == STATE_CLOSED) continue;
+            if (dsock->state == STATE_CLOSED)
+                continue;
 
             /* Send all new data to the socket and close it if any errors occour */
             if (!flush_output(dsock))
@@ -152,23 +181,26 @@ void GameLoop(int control)
         gettimeofday(&new_time, NULL);
 
         /* get the time right now, and calculate how long we should sleep */
-        usecs = (int) (last_time.tv_usec - new_time.tv_usec) + 1000000 / PULSES_PER_SECOND;
-        secs = (int) (last_time.tv_sec - new_time.tv_sec);
+        usecs = (int)(last_time.tv_usec - new_time.tv_usec) + 1000000 / PULSES_PER_SECOND;
+        secs = (int)(last_time.tv_sec - new_time.tv_sec);
 
         /*
          * Now we make sure that 0 <= usecs < 1.000.000
          */
-        while (usecs < 0) {
+        while (usecs < 0)
+        {
             usecs += 1000000;
             secs -= 1;
         }
-        while (usecs >= 1000000) {
+        while (usecs >= 1000000)
+        {
             usecs -= 1000000;
             secs += 1;
         }
 
         /* if secs < 0 we don't sleep, since we have encountered a laghole */
-        if (secs > 0 || (secs == 0 && usecs > 0)) {
+        if (secs > 0 || (secs == 0 && usecs > 0))
+        {
             struct timeval sleep_time;
 
             sleep_time.tv_usec = usecs;
@@ -206,13 +238,14 @@ int init_socket()
     my_addr.sin_port = htons(MUDPORT);
 
     /* this actually fixes any problems with threads */
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof (int)) == -1) {
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) == -1)
+    {
         perror("Error in setsockopt()");
         exit(1);
     }
 
     /* bind the port */
-    bind(sockfd, (struct sockaddr *) &my_addr, sizeof (struct sockaddr));
+    bind(sockfd, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
 
     /* start listening already :) */
     listen(sockfd, 3);
@@ -232,8 +265,8 @@ bool new_socket(int sock)
     struct sockaddr_in sock_addr;
     pthread_attr_t attr;
     pthread_t thread_lookup;
-    LOOKUP_DATA * lData;
-    D_SOCKET * sock_new;
+    LOOKUP_DATA *lData;
+    D_SOCKET *sock_new;
     int argp = 1;
     socklen_t size;
 
@@ -245,13 +278,17 @@ bool new_socket(int sock)
      * allocate some memory for a new socket if
      * there is no free socket in the free_list
      */
-    if (StackSize(dsock_free) <= 0) {
-        if ((sock_new = (D_SOCKET*) malloc(sizeof (*sock_new))) == NULL) {
+    if (StackSize(dsock_free) <= 0)
+    {
+        if ((sock_new = (D_SOCKET *)malloc(sizeof(*sock_new))) == NULL)
+        {
             bug("New_socket: Cannot allocate memory for socket.");
             abort();
         }
-    } else {
-        sock_new = (D_SOCKET *) PopStack(dsock_free);
+    }
+    else
+    {
+        sock_new = (D_SOCKET *)PopStack(dsock_free);
     }
 
     /* attach the new connection to the socket list */
@@ -267,37 +304,41 @@ bool new_socket(int sock)
     AttachToList(sock_new, dsock_list);
 
     /* do a host lookup */
-    size = sizeof (sock_addr);
-    if (getpeername(sock, (struct sockaddr *) &sock_addr, &size) < 0) {
+    size = sizeof(sock_addr);
+    if (getpeername(sock, (struct sockaddr *)&sock_addr, &size) < 0)
+    {
         perror("New_socket: getpeername");
         sock_new->hostname = strdup("unknown");
-    } else {
+    }
+    else
+    {
         /* set the IP number as the temporary hostname */
         sock_new->hostname = strdup(inet_ntoa(sock_addr.sin_addr));
 
-        if (strcasecmp(sock_new->hostname, "127.0.0.1")) {
+        if (strcasecmp(sock_new->hostname, "127.0.0.1"))
+        {
             /* allocate some memory for the lookup data */
-            if ((lData = (LOOKUP_DATA *) malloc(sizeof (*lData))) == NULL) {
+            if ((lData = (LOOKUP_DATA *)malloc(sizeof(*lData))) == NULL)
+            {
                 bug("New_socket: Cannot allocate memory for lookup data.");
                 abort();
             }
 
             /* Set the lookup_data for use in lookup_address() */
-            lData->sa = (struct sockaddr *) &sock_addr;
+            lData->sa = (struct sockaddr *)&sock_addr;
             lData->dsock = sock_new;
 
             /* dispatch the lookup thread */
-            pthread_create(&thread_lookup, &attr, &lookup_address, (void*) lData);
-        } else sock_new->lookup_status++;
+            pthread_create(&thread_lookup, &attr, &lookup_address, (void *)lData);
+        }
+        else
+            sock_new->lookup_status++;
     }
 
     /* negotiate compression */
-    text_to_buffer(sock_new, (char *) compress_will2);
-    text_to_buffer(sock_new, (char *) compress_will);
-    text_to_buffer(sock_new, (char *) gmcp_will);
-
-    /* negotaiate MSDP*/
-    text_to_buffer(sock_new, (char *) msdp_will);
+    text_to_buffer(sock_new, (char *)compress_will2);
+    text_to_buffer(sock_new, (char *)compress_will);
+    text_to_buffer(sock_new, (char *)gmcp_will);
 
     /* send the greeting */
     text_to_buffer(sock_new, greeting);
@@ -305,6 +346,9 @@ bool new_socket(int sock)
 
     /* initialize socket events */
     init_events_socket(sock_new);
+
+    /* negotaiate MSDP*/
+    text_to_socket(sock_new, (char *)msdp_will);
 
     /* everything went as it was supposed to */
     return true;
@@ -322,25 +366,29 @@ void close_socket(D_SOCKET *dsock, bool reconnect)
     EVENT_DATA *pEvent;
     ITERATOR Iter;
 
-    if (dsock->lookup_status > TSTATE_DONE) return;
+    if (dsock->lookup_status > TSTATE_DONE)
+        return;
     dsock->lookup_status += 2;
 
     /* remove the socket from the polling list */
     FD_CLR(dsock->control, &fSet);
 
-    if (dsock->state == STATE_PLAYING) {
+    if (dsock->state == STATE_PLAYING)
+    {
         if (reconnect)
             text_to_socket(dsock, "This connection has been taken over.\n\r");
-        else if (dsock->player) {
+        else if (dsock->player)
+        {
             dsock->player->socket = NULL;
             log_string("Closing link to %s", dsock->player->name);
         }
-    } else if (dsock->player)
+    }
+    else if (dsock->player)
         free_mobile(dsock->player);
 
     /* dequeue all events for this socket */
     AttachIterator(&Iter, dsock->events);
-    while ((pEvent = (EVENT_DATA *) NextInList(&Iter)) != NULL)
+    while ((pEvent = (EVENT_DATA *)NextInList(&Iter)) != NULL)
         dequeue_event(pEvent);
     DetachIterator(&Iter);
 
@@ -362,29 +410,36 @@ bool read_from_socket(D_SOCKET *dsock)
 
     /* check for buffer overflows, and drop connection in that case */
     size = strlen(dsock->inbuf);
-    if (size >= sizeof (dsock->inbuf) - 2) {
+    if (size >= sizeof(dsock->inbuf) - 2)
+    {
         text_to_socket(dsock, "\n\r!!!! Input Overflow !!!!\n\r");
         return false;
     }
 
     /* start reading from the socket */
-    for (; ; ) {
+    for (;;)
+    {
         int sInput;
-        int wanted = sizeof (dsock->inbuf) - 2 - size;
+        int wanted = sizeof(dsock->inbuf) - 2 - size;
 
         sInput = read(dsock->control, dsock->inbuf + size, wanted);
 
-        if (sInput > 0) {
+        if (sInput > 0)
+        {
             size += sInput;
 
             if (dsock->inbuf[size - 1] == '\n' || dsock->inbuf[size - 1] == '\r')
                 break;
-        } else if (sInput == 0) {
+        }
+        else if (sInput == 0)
+        {
             log_string("Read_from_socket: EOF");
             return false;
-        } else if (errno == EAGAIN || sInput == wanted)
+        }
+        else if (errno == EAGAIN || sInput == wanted)
             break;
-        else {
+        else
+        {
             perror("Read_from_socket");
             return false;
         }
@@ -406,14 +461,17 @@ bool text_to_socket(D_SOCKET *dsock, const char *txt)
     length = strlen(txt);
 
     /* write compressed */
-    if (dsock && dsock->out_compress) {
-        dsock->out_compress->next_in = (unsigned char *) txt;
+    if (dsock && dsock->out_compress)
+    {
+        dsock->out_compress->next_in = (unsigned char *)txt;
         dsock->out_compress->avail_in = length;
 
-        while (dsock->out_compress->avail_in) {
+        while (dsock->out_compress->avail_in)
+        {
             dsock->out_compress->avail_out = COMPRESS_BUF_SIZE - (dsock->out_compress->next_out - dsock->out_compress_buf);
 
-            if (dsock->out_compress->avail_out) {
+            if (dsock->out_compress->avail_out)
+            {
                 int status = deflate(dsock->out_compress, Z_SYNC_FLUSH);
 
                 if (status != Z_OK)
@@ -421,16 +479,21 @@ bool text_to_socket(D_SOCKET *dsock, const char *txt)
             }
 
             length = dsock->out_compress->next_out - dsock->out_compress_buf;
-            if (length > 0) {
-                for (iPtr = 0; iPtr < length; iPtr += iWrt) {
+            if (length > 0)
+            {
+                for (iPtr = 0; iPtr < length; iPtr += iWrt)
+                {
                     iBlck = UMIN(length - iPtr, 4096);
-                    if ((iWrt = write(control, dsock->out_compress_buf + iPtr, iBlck)) < 0) {
+                    if ((iWrt = write(control, dsock->out_compress_buf + iPtr, iBlck)) < 0)
+                    {
                         perror("Text_to_socket (compressed):");
                         return false;
                     }
                 }
-                if (iWrt <= 0) break;
-                if (iPtr > 0) {
+                if (iWrt <= 0)
+                    break;
+                if (iPtr > 0)
+                {
                     if (iPtr < length)
                         memmove(dsock->out_compress_buf, dsock->out_compress_buf + iPtr, length - iPtr);
 
@@ -442,9 +505,11 @@ bool text_to_socket(D_SOCKET *dsock, const char *txt)
     }
 
     /* write uncompressed */
-    for (iPtr = 0; iPtr < length; iPtr += iWrt) {
+    for (iPtr = 0; iPtr < length; iPtr += iWrt)
+    {
         iBlck = UMIN(length - iPtr, 4096);
-        if ((iWrt = write(control, txt + iPtr, iBlck)) < 0) {
+        if ((iWrt = write(control, txt + iPtr, iBlck)) < 0)
+        {
             perror("Text_to_socket:");
             return false;
         }
@@ -469,171 +534,195 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
     int length = strlen(txt);
 
     /* the color struct */
-    struct sAnsiColor {
+    struct sAnsiColor
+    {
         const char cTag;
-        const char * cString;
+        const char *cString;
         int aFlag;
-    } ;
+    };
 
     /* the color table... */
     const struct sAnsiColor ansiTable[] = {
-        { 'd', "30", eTHIN},
-        { 'D', "30", eBOLD},
-        { 'r', "31", eTHIN},
-        { 'R', "31", eBOLD},
-        { 'g', "32", eTHIN},
-        { 'G', "32", eBOLD},
-        { 'y', "33", eTHIN},
-        { 'Y', "33", eBOLD},
-        { 'b', "34", eTHIN},
-        { 'B', "34", eBOLD},
-        { 'p', "35", eTHIN},
-        { 'P', "35", eBOLD},
-        { 'c', "36", eTHIN},
-        { 'C', "36", eBOLD},
-        { 'w', "37", eTHIN},
-        { 'W', "37", eBOLD},
+        {'d', "30", eTHIN},
+        {'D', "30", eBOLD},
+        {'r', "31", eTHIN},
+        {'R', "31", eBOLD},
+        {'g', "32", eTHIN},
+        {'G', "32", eBOLD},
+        {'y', "33", eTHIN},
+        {'Y', "33", eBOLD},
+        {'b', "34", eTHIN},
+        {'B', "34", eBOLD},
+        {'p', "35", eTHIN},
+        {'P', "35", eBOLD},
+        {'c', "36", eTHIN},
+        {'C', "36", eBOLD},
+        {'w', "37", eTHIN},
+        {'W', "37", eBOLD},
 
         /* the end tag */
-        { '\0', "", eTHIN}
-    };
+        {'\0', "", eTHIN}};
 
-    if (length >= MAX_BUFFER) {
+    if (length >= MAX_BUFFER)
+    {
         log_string("text_to_buffer: buffer overflow.");
         return;
     }
 
     /* always start with a leading space */
-    if (dsock->top_output == 0) {
+    if (dsock->top_output == 0)
+    {
         dsock->outbuf[0] = '\n';
         dsock->outbuf[1] = '\r';
         dsock->top_output = 2;
     }
 
-    while (*txt != '\0') {
+    while (*txt != '\0')
+    {
         /* simple bound checking */
         if (iPtr > (8 * MAX_BUFFER - 15))
             break;
 
         switch (*txt)
         {
-            default:
-                output[iPtr++] = *txt++;
-                break;
-            case '#':
+        default:
+            output[iPtr++] = *txt++;
+            break;
+        case '#':
+            txt++;
+
+            /* toggle underline on/off with #u */
+            if (*txt == 'u')
+            {
                 txt++;
-
-                /* toggle underline on/off with #u */
-                if (*txt == 'u') {
-                    txt++;
-                    if (underline) {
-                        underline = false;
-                        output[iPtr++] = 27;
-                        output[iPtr++] = '[';
-                        output[iPtr++] = '0';
-                        if (bold) {
-                            output[iPtr++] = ';';
-                            output[iPtr++] = '1';
-                        }
-                        if (last != -1) {
-                            output[iPtr++] = ';';
-                            for (j = 0; ansiTable[last].cString[j] != '\0'; j++) {
-                                output[iPtr++] = ansiTable[last].cString[j];
-                            }
-                        }
-                        output[iPtr++] = 'm';
-                    } else {
-                        underline = true;
-                        output[iPtr++] = 27;
-                        output[iPtr++] = '[';
-                        output[iPtr++] = '4';
-                        output[iPtr++] = 'm';
+                if (underline)
+                {
+                    underline = false;
+                    output[iPtr++] = 27;
+                    output[iPtr++] = '[';
+                    output[iPtr++] = '0';
+                    if (bold)
+                    {
+                        output[iPtr++] = ';';
+                        output[iPtr++] = '1';
                     }
-                }/* parse ## to # */
-                else if (*txt == '#') {
-                    txt++;
-                    output[iPtr++] = '#';
-                }/* #n should clear all tags */
-                else if (*txt == 'n') {
-                    txt++;
-                    if (last != -1 || underline || bold) {
-                        underline = false;
-                        bold = false;
-                        output[iPtr++] = 27;
-                        output[iPtr++] = '[';
-                        output[iPtr++] = '0';
-                        output[iPtr++] = 'm';
-                    }
-
-                    last = -1;
-                }/* check for valid color tag and parse */
-                else {
-                    bool validTag = false;
-
-                    for (j = 0; ansiTable[j].cString[0] != '\0'; j++) {
-                        if (*txt == ansiTable[j].cTag) {
-                            validTag = true;
-
-                            /* we only add the color sequence if it's needed */
-                            if (last != j) {
-                                bool cSequence = false;
-
-                                /* escape sequence */
-                                output[iPtr++] = 27;
-                                output[iPtr++] = '[';
-
-                                /* remember if a color change is needed */
-                                if (last == -1 || last / 2 != j / 2)
-                                    cSequence = true;
-
-                                /* handle font boldness */
-                                if (bold && ansiTable[j].aFlag == eTHIN) {
-                                    output[iPtr++] = '0';
-                                    bold = false;
-
-                                    if (underline) {
-                                        output[iPtr++] = ';';
-                                        output[iPtr++] = '4';
-                                    }
-
-                                    /* changing to eTHIN wipes the old color */
-                                    output[iPtr++] = ';';
-                                    cSequence = true;
-                                } else if (!bold && ansiTable[j].aFlag == eBOLD) {
-                                    output[iPtr++] = '1';
-                                    bold = true;
-
-                                    if (cSequence)
-                                        output[iPtr++] = ';';
-                                }
-
-                                /* add color sequence if needed */
-                                if (cSequence) {
-                                    for (k = 0; ansiTable[j].cString[k] != '\0'; k++) {
-                                        output[iPtr++] = ansiTable[j].cString[k];
-                                    }
-                                }
-
-                                output[iPtr++] = 'm';
-                            }
-
-                            /* remember the last color */
-                            last = j;
+                    if (last != -1)
+                    {
+                        output[iPtr++] = ';';
+                        for (j = 0; ansiTable[last].cString[j] != '\0'; j++)
+                        {
+                            output[iPtr++] = ansiTable[last].cString[j];
                         }
                     }
-
-                    /* it wasn't a valid color tag */
-                    if (!validTag)
-                        output[iPtr++] = '#';
-                    else
-                        txt++;
+                    output[iPtr++] = 'm';
                 }
-                break;
+                else
+                {
+                    underline = true;
+                    output[iPtr++] = 27;
+                    output[iPtr++] = '[';
+                    output[iPtr++] = '4';
+                    output[iPtr++] = 'm';
+                }
+            } /* parse ## to # */
+            else if (*txt == '#')
+            {
+                txt++;
+                output[iPtr++] = '#';
+            } /* #n should clear all tags */
+            else if (*txt == 'n')
+            {
+                txt++;
+                if (last != -1 || underline || bold)
+                {
+                    underline = false;
+                    bold = false;
+                    output[iPtr++] = 27;
+                    output[iPtr++] = '[';
+                    output[iPtr++] = '0';
+                    output[iPtr++] = 'm';
+                }
+
+                last = -1;
+            } /* check for valid color tag and parse */
+            else
+            {
+                bool validTag = false;
+
+                for (j = 0; ansiTable[j].cString[0] != '\0'; j++)
+                {
+                    if (*txt == ansiTable[j].cTag)
+                    {
+                        validTag = true;
+
+                        /* we only add the color sequence if it's needed */
+                        if (last != j)
+                        {
+                            bool cSequence = false;
+
+                            /* escape sequence */
+                            output[iPtr++] = 27;
+                            output[iPtr++] = '[';
+
+                            /* remember if a color change is needed */
+                            if (last == -1 || last / 2 != j / 2)
+                                cSequence = true;
+
+                            /* handle font boldness */
+                            if (bold && ansiTable[j].aFlag == eTHIN)
+                            {
+                                output[iPtr++] = '0';
+                                bold = false;
+
+                                if (underline)
+                                {
+                                    output[iPtr++] = ';';
+                                    output[iPtr++] = '4';
+                                }
+
+                                /* changing to eTHIN wipes the old color */
+                                output[iPtr++] = ';';
+                                cSequence = true;
+                            }
+                            else if (!bold && ansiTable[j].aFlag == eBOLD)
+                            {
+                                output[iPtr++] = '1';
+                                bold = true;
+
+                                if (cSequence)
+                                    output[iPtr++] = ';';
+                            }
+
+                            /* add color sequence if needed */
+                            if (cSequence)
+                            {
+                                for (k = 0; ansiTable[j].cString[k] != '\0'; k++)
+                                {
+                                    output[iPtr++] = ansiTable[j].cString[k];
+                                }
+                            }
+
+                            output[iPtr++] = 'm';
+                        }
+
+                        /* remember the last color */
+                        last = j;
+                    }
+                }
+
+                /* it wasn't a valid color tag */
+                if (!validTag)
+                    output[iPtr++] = '#';
+                else
+                    txt++;
+            }
+            break;
         }
     }
 
     /* and terminate it with the standard color */
-    if (last != -1 || underline || bold) {
+    if (last != -1 || underline || bold)
+    {
         output[iPtr++] = 27;
         output[iPtr++] = '[';
         output[iPtr++] = '0';
@@ -642,7 +731,8 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
     output[iPtr] = '\0';
 
     /* check to see if the socket can accept that much data */
-    if (dsock->top_output + iPtr >= MAX_OUTPUT) {
+    if (dsock->top_output + iPtr >= MAX_OUTPUT)
+    {
         bug("Text_to_buffer: ouput overflow on %s.", dsock->hostname);
         return;
     }
@@ -660,7 +750,8 @@ void text_to_buffer(D_SOCKET *dsock, const char *txt)
  */
 void text_to_mobile(D_MOBILE *dMob, const char *txt)
 {
-    if (dMob->socket) {
+    if (dMob->socket)
+    {
         text_to_buffer(dMob->socket, txt);
         dMob->socket->bust_prompt = true;
     }
@@ -697,79 +788,106 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
         return;
 
     /* copy the next command into next_command */
-    for (; i < size; i++) {
-        if (dsock->inbuf[i] == (signed char) IAC) {
+    for (; i < size; i++)
+    {
+        if (dsock->inbuf[i] == (signed char)IAC)
+        {
             teloptIndex = 1;
-        } else if (teloptIndex == 1
-                && (dsock->inbuf[i] == (signed char) DO
-                || dsock->inbuf[i] == (signed char) DONT
-                || dsock->inbuf[i] == (signed char) SB)) {
-            
+        }
+        else if (teloptIndex == 1 && (dsock->inbuf[i] == (signed char)DO || dsock->inbuf[i] == (signed char)DONT || dsock->inbuf[i] == (signed char)SB))
+        {
+
             teloptIndex = 2;
-            
-        } else if (teloptIndex == 1 && gmcp && dsock->inbuf[i] == (signed char) SE) {
-            
+        }
+        else if (teloptIndex == 1 && gmcp && dsock->inbuf[i] == (signed char)SE)
+        {
+
             teloptIndex = 0;
             gmcp = false;
             dsock->next_command[j] = '\0';
             gmcpReceived(dsock);
             dsock->next_command[j = 0] = '\0';
-            
-        } else if (teloptIndex == 1 && msdp && dsock->inbuf[i] == (signed char) SE) {
-            
+        }
+        else if (teloptIndex == 1 && msdp && dsock->inbuf[i] == (signed char)SE)
+        {
+
             teloptIndex = 0;
             msdp = false;
+
+            for (int z = 0; z <= strlen(dsock->inbuf); z++)
+            {
+                printf("%u ", (unsigned char)dsock->inbuf[z]);
+            }
+
+            telnetCmdToString(dsock->inbuf);
+
+            printf("\n");
+
             dsock->next_command[j] = '\0';
+            msdpReceive(dsock);
             dsock->next_command[j = 0] = '\0';
-            
-        } else if (teloptIndex == 2) {
+        }
+        else if (teloptIndex == 2)
+        {
             teloptIndex = 0;
 
-            if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS) /* check for version 1 */ {
-                if (dsock->inbuf[i - 1] == (signed char) DO) /* start compressing   */
+            if (dsock->inbuf[i] == (signed char)TELOPT_COMPRESS) /* check for version 1 */
+            {
+                if (dsock->inbuf[i - 1] == (signed char)DO) /* start compressing   */
                     compressStart(dsock, TELOPT_COMPRESS);
-                else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
+                else if (dsock->inbuf[i - 1] == (signed char)DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS, false);
-                
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_COMPRESS2) /* check for version 2 */ {
-                
-                if (dsock->inbuf[i - 1] == (signed char) DO) /* start compressing   */
+            }
+            else if (dsock->inbuf[i] == (signed char)TELOPT_COMPRESS2) /* check for version 2 */
+            {
+
+                if (dsock->inbuf[i - 1] == (signed char)DO) /* start compressing   */
                     compressStart(dsock, TELOPT_COMPRESS2);
-                else if (dsock->inbuf[i - 1] == (signed char) DONT) /* stop compressing    */
+                else if (dsock->inbuf[i - 1] == (signed char)DONT) /* stop compressing    */
                     compressEnd(dsock, TELOPT_COMPRESS2, false);
-                
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_GMCP) /* check for gmcp */ {
-                
-                if (dsock->inbuf[i - 1] == (signed char) DO)
+            }
+            else if (dsock->inbuf[i] == (signed char)TELOPT_GMCP) /* check for gmcp */
+            {
+
+                if (dsock->inbuf[i - 1] == (signed char)DO)
                     gmcpEnable(dsock);
-                else if (dsock->inbuf[i - 1] == (signed char) SB) {
+                else if (dsock->inbuf[i - 1] == (signed char)SB)
+                {
                     gmcp = true;
                 }
-                
-            } else if (dsock->inbuf[i] == (signed char) TELOPT_MSDP) /* check for MSDP */ {
-                
-                if (dsock->inbuf[i - 1] == (signed char) DO) {
-                    log_string("Client supports and enabled MSDP.");
-                    if (!msdpEnable(dsock)) {
-                        bug("msdp could not be enabled in DSOCK");
+            }
+            else if (dsock->inbuf[i] == (signed char)TELOPT_MSDP) /* check for MSDP */
+            {
+
+                if (dsock->inbuf[i - 1] == (signed char)DO)
+                {
+                    log_string("Client supports and enabled MSDP.\n");
+                    if (!msdpEnable(dsock))
+                    {
+                        bug("msdp could not be enabled in DSOCK\n");
                     }
-                } else if (dsock->inbuf[i - 1] == (signed char) DONT) {
-                    log_string("Client does not support MSDP.");
-                    text_to_buffer(dsock, (char *) msdp_wont);
+                }
+                else if (dsock->inbuf[i - 1] == (signed char)DONT)
+                {
+                    log_string("Client does not support MSDP.\n");
                     dsock->msdp_enabled = false;
-                } else if (dsock->inbuf[i - 1] == (signed char) SB) {
+                }
+                else if (dsock->inbuf[i - 1] == (signed char)SB)
+                {
                     msdp = true;
                 }
-                
             }
-        } else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i])) {
+        }
+        else if (isprint(dsock->inbuf[i]) && isascii(dsock->inbuf[i]))
+        {
             dsock->next_command[j++] = dsock->inbuf[i];
         }
     }
     dsock->next_command[j] = '\0';
 
     /* skip forward to the next line */
-    while (dsock->inbuf[size] == '\n' || dsock->inbuf[size] == '\r') {
+    while (dsock->inbuf[size] == '\n' || dsock->inbuf[size] == '\r')
+    {
         dsock->bust_prompt = true; /* seems like a good place to check */
         size++;
     }
@@ -778,11 +896,118 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
     i = size;
 
     /* move the context of inbuf down */
-    while (dsock->inbuf[size] != '\0') {
+    while (dsock->inbuf[size] != '\0')
+    {
         dsock->inbuf[size - i] = dsock->inbuf[size];
         size++;
     }
     dsock->inbuf[size - i] = '\0';
+}
+
+bool telnetCmdMatch(int searchVal)
+{
+    int currVal = 0;
+    size_t count = 0;
+    while (currVal >= 0)
+    {
+        // Update currVal
+        currVal = telnetCommands[count++].val;
+        // We have a match
+        if (searchVal == currVal)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Bugged.
+void *catOrCopy(char *dest, char *src)
+{
+    if (strlen(src) > 0)
+    {
+        strcat(dest, src);
+        return dest;
+    } else {
+        strcpy(dest, src);
+        return src;
+    }
+
+    return NULL;
+}
+
+/*
+int currVal = 0;
+            size_t count = 0;
+            while (currVal >= 0)
+            {
+                // Update currVal
+                currVal = telnetCommands[count].val;
+
+                // We have a match
+                if (currElem == currVal)
+                {
+                    inCommand = true;
+                    if (z == 0)
+                    {
+                        strcpy(correctedString, telnetCommands[count].name);
+                    }
+                    else
+                    {
+                        strcat(correctedString, telnetCommands[count].name);
+                    }
+                }
+            }
+*/
+
+void telnetCmdToString(char *playerInBuff)
+{
+    bool inCommand = false;
+    // Build a new string. A better string. A bolder string.
+    char correctedString[strlen(playerInBuff) + 1];
+
+    // loop through input buffer
+    for (int z = 0; z <= strlen(playerInBuff); z++)
+    {
+        // save a cast
+        unsigned char currElem = (unsigned char)playerInBuff[z];
+        if (currElem > 127)
+        {
+            // Telnet Command.
+            // loop through the command table
+            if (telnetCmdMatch(currElem))
+            {
+                // if we found a match then based on corrected string
+                // add it somehow
+                // TODO: maybe not this every loop through? 
+                // Probably collect "chunks" and allocate chunk by chunk.
+
+                catOrCopy(correctedString, (char *)telnetCommands[currElem].name);
+                printf("Test\n");
+            } else {
+                // Some error
+                printf("Invalid telnet command. Or some lazy bum didnt implement it.\n");
+            }
+
+            inCommand = true;
+        } else {
+            // Check whether in a command or not
+            // If we are we want to not translate certain values into there
+            // ASCII values.
+            //
+            // I.E. We don't want to turn MSDP (69) into E but print "MSDP".
+
+            if (!inCommand)
+            {
+
+            } else {
+                // We are in a for real ASCII string, just store it normally.
+            }
+        }
+    }
+
+    //return true;
 }
 
 bool flush_output(D_SOCKET *dsock)
@@ -792,7 +1017,8 @@ bool flush_output(D_SOCKET *dsock)
         return true;
 
     /* bust a prompt */
-    if (dsock->state == STATE_PLAYING && dsock->bust_prompt) {
+    if (dsock->state == STATE_PLAYING && dsock->bust_prompt)
+    {
         text_to_buffer(dsock, "\n\rSocketMud:> ");
         dsock->bust_prompt = false;
     }
@@ -819,87 +1045,157 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
     switch (dsock->state)
     {
-        default:
-            bug("Handle_new_connections: Bad state.");
+    default:
+        bug("Handle_new_connections: Bad state.");
+        break;
+    case STATE_NEW_NAME:
+        if (dsock->lookup_status != TSTATE_DONE)
+        {
+            text_to_buffer(dsock, "Making a dns lookup, please have patience.\n\rWhat is your name? ");
+            return;
+        }
+        if (!check_name(arg)) /* check for a legal name */
+        {
+            text_to_buffer(dsock, "Sorry, that's not a legal name, please pick another.\n\rWhat is your name? ");
             break;
-        case STATE_NEW_NAME:
-            if (dsock->lookup_status != TSTATE_DONE) {
-                text_to_buffer(dsock, "Making a dns lookup, please have patience.\n\rWhat is your name? ");
-                return;
-            }
-            if (!check_name(arg)) /* check for a legal name */ {
-                text_to_buffer(dsock, "Sorry, that's not a legal name, please pick another.\n\rWhat is your name? ");
-                break;
-            }
-            arg[0] = toupper(arg[0]);
-            log_string("%s is trying to connect.", arg);
+        }
+        arg[0] = toupper(arg[0]);
+        log_string("%s is trying to connect.", arg);
 
-            /* Check for a new Player */
-            if ((p_new = load_profile(arg)) == NULL) {
-                if (StackSize(dmobile_free) <= 0) {
-                    if ((p_new = (D_MOBILE *) malloc(sizeof (*p_new))) == NULL) {
-                        bug("Handle_new_connection: Cannot allocate memory.");
-                        abort();
-                    }
-                } else {
-                    p_new = (D_MOBILE *) PopStack(dmobile_free);
+        /* Check for a new Player */
+        if ((p_new = load_profile(arg)) == NULL)
+        {
+            if (StackSize(dmobile_free) <= 0)
+            {
+                if ((p_new = (D_MOBILE *)malloc(sizeof(*p_new))) == NULL)
+                {
+                    bug("Handle_new_connection: Cannot allocate memory.");
+                    abort();
                 }
-                clear_mobile(p_new);
-
-                /* give the player it's name */
-                p_new->name = strdup(arg);
-
-                /* prepare for next step */
-                text_to_buffer(dsock, "Please enter a new password: ");
-                dsock->state = STATE_NEW_PASSWORD;
-            } else /* old player */ {
-                /* prepare for next step */
-                text_to_buffer(dsock, "What is your password? ");
-                dsock->state = STATE_ASK_PASSWORD;
             }
-            text_to_buffer(dsock, (char *) dont_echo);
-
-            /* socket <-> player */
-            p_new->socket = dsock;
-            dsock->player = p_new;
-            break;
-        case STATE_NEW_PASSWORD:
-            if (strlen(arg) < 5 || strlen(arg) >= 256) {
-                text_to_buffer(dsock, "Between 5 and 256 chars please!\n\rPlease enter a new password: ");
-                return;
+            else
+            {
+                p_new = (D_MOBILE *)PopStack(dmobile_free);
             }
+            clear_mobile(p_new);
 
-            free(dsock->player->password);
-            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-            dsock->player->password = strdup(crypt(arg, salt));
+            /* give the player it's name */
+            p_new->name = strdup(arg);
 
-            /*
+            /* prepare for next step */
+            text_to_buffer(dsock, "Please enter a new password: ");
+            dsock->state = STATE_NEW_PASSWORD;
+        }
+        else /* old player */
+        {
+            /* prepare for next step */
+            text_to_buffer(dsock, "What is your password? ");
+            dsock->state = STATE_ASK_PASSWORD;
+        }
+        text_to_buffer(dsock, (char *)dont_echo);
+
+        /* socket <-> player */
+        p_new->socket = dsock;
+        dsock->player = p_new;
+        break;
+    case STATE_NEW_PASSWORD:
+        if (strlen(arg) < 5 || strlen(arg) >= 256)
+        {
+            text_to_buffer(dsock, "Between 5 and 256 chars please!\n\rPlease enter a new password: ");
+            return;
+        }
+
+        free(dsock->player->password);
+        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        dsock->player->password = strdup(crypt(arg, salt));
+
+        /*
              * We check our encrypted password is not "*0" or "*1".
              * This is one of the ways the blowcrypt API signals some
              * internal error.
              * 
              */
 
-            if (0 == strncmp("*0", dsock->player->password, 2)
-                    || 0 == strncmp("*1", dsock->player->password, 2)) {
-                text_to_buffer(dsock, "Illegal password!\n\rPlease enter a new password: ");
+        if (0 == strncmp("*0", dsock->player->password, 2) || 0 == strncmp("*1", dsock->player->password, 2))
+        {
+            text_to_buffer(dsock, "Illegal password!\n\rPlease enter a new password: ");
+            return;
+        }
+
+        text_to_buffer(dsock, "Please verify the password: ");
+        dsock->state = STATE_VERIFY_PASSWORD;
+        break;
+    case STATE_VERIFY_PASSWORD:
+        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        if (!strcmp(crypt(arg, salt), dsock->player->password))
+        {
+            text_to_buffer(dsock, (char *)do_echo);
+
+            /* put him in the list */
+            AttachToList(dsock->player, dmobile_list);
+
+            log_string("New player: %s has entered the game.", dsock->player->name);
+
+            /* and into the game */
+            dsock->state = STATE_PLAYING;
+            text_to_buffer(dsock, motd);
+
+            /* initialize events on the player */
+            init_events_player(dsock->player);
+
+            /* strip the idle event from this socket */
+            strip_event_socket(dsock, EVENT_SOCKET_IDLE);
+        }
+        else
+        {
+            free(dsock->player->password);
+            dsock->player->password = NULL;
+            text_to_buffer(dsock, "Password mismatch!\n\rPlease enter a new password: ");
+            dsock->state = STATE_NEW_PASSWORD;
+        }
+        break;
+    case STATE_ASK_PASSWORD:
+        text_to_buffer(dsock, (char *)do_echo);
+        snprintf(salt, sizeof(salt), "$2y$12$%s%s$", pepper, dsock->player->name);
+        if (!strcmp(crypt(arg, salt), dsock->player->password))
+        {
+            if ((p_new = check_reconnect(dsock->player->name)) != NULL)
+            {
+                /* attach the new player */
+                free_mobile(dsock->player);
+                dsock->player = p_new;
+                p_new->socket = dsock;
+
+                log_string("%s has reconnected.", dsock->player->name);
+
+                /* and let him enter the game */
+                dsock->state = STATE_PLAYING;
+                text_to_buffer(dsock, "You take over a body already in use.\n\r");
+
+                /* strip the idle event from this socket */
+                strip_event_socket(dsock, EVENT_SOCKET_IDLE);
+            }
+            else if ((p_new = load_player(dsock->player->name)) == NULL)
+            {
+                text_to_socket(dsock, "ERROR: Your pfile is missing!\n\r");
+                free_mobile(dsock->player);
+                dsock->player = NULL;
+                close_socket(dsock, false);
                 return;
             }
+            else
+            {
+                /* attach the new player */
+                free_mobile(dsock->player);
+                dsock->player = p_new;
+                p_new->socket = dsock;
 
-            text_to_buffer(dsock, "Please verify the password: ");
-            dsock->state = STATE_VERIFY_PASSWORD;
-            break;
-        case STATE_VERIFY_PASSWORD:
-            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-            if (!strcmp(crypt(arg, salt), dsock->player->password)) {
-                text_to_buffer(dsock, (char *) do_echo);
+                /* put him in the active list */
+                AttachToList(p_new, dmobile_list);
 
-                /* put him in the list */
-                AttachToList(dsock->player, dmobile_list);
+                log_string("%s has entered the game.", dsock->player->name);
 
-                log_string("New player: %s has entered the game.", dsock->player->name);
-
-                /* and into the game */
+                /* and let him enter the game */
                 dsock->state = STATE_PLAYING;
                 text_to_buffer(dsock, motd);
 
@@ -908,71 +1204,22 @@ void handle_new_connections(D_SOCKET *dsock, char *arg)
 
                 /* strip the idle event from this socket */
                 strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-            } else {
-                free(dsock->player->password);
-                dsock->player->password = NULL;
-                text_to_buffer(dsock, "Password mismatch!\n\rPlease enter a new password: ");
-                dsock->state = STATE_NEW_PASSWORD;
             }
-            break;
-        case STATE_ASK_PASSWORD:
-            text_to_buffer(dsock, (char *) do_echo);
-            snprintf(salt, sizeof (salt), "$2y$12$%s%s$", pepper, dsock->player->name);
-            if (!strcmp(crypt(arg, salt), dsock->player->password)) {
-                if ((p_new = check_reconnect(dsock->player->name)) != NULL) {
-                    /* attach the new player */
-                    free_mobile(dsock->player);
-                    dsock->player = p_new;
-                    p_new->socket = dsock;
-
-                    log_string("%s has reconnected.", dsock->player->name);
-
-                    /* and let him enter the game */
-                    dsock->state = STATE_PLAYING;
-                    text_to_buffer(dsock, "You take over a body already in use.\n\r");
-
-                    /* strip the idle event from this socket */
-                    strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-                } else if ((p_new = load_player(dsock->player->name)) == NULL) {
-                    text_to_socket(dsock, "ERROR: Your pfile is missing!\n\r");
-                    free_mobile(dsock->player);
-                    dsock->player = NULL;
-                    close_socket(dsock, false);
-                    return;
-                } else {
-                    /* attach the new player */
-                    free_mobile(dsock->player);
-                    dsock->player = p_new;
-                    p_new->socket = dsock;
-
-                    /* put him in the active list */
-                    AttachToList(p_new, dmobile_list);
-
-                    log_string("%s has entered the game.", dsock->player->name);
-
-                    /* and let him enter the game */
-                    dsock->state = STATE_PLAYING;
-                    text_to_buffer(dsock, motd);
-
-                    /* initialize events on the player */
-                    init_events_player(dsock->player);
-
-                    /* strip the idle event from this socket */
-                    strip_event_socket(dsock, EVENT_SOCKET_IDLE);
-                }
-            } else {
-                text_to_socket(dsock, "Bad password!\n\r");
-                free_mobile(dsock->player);
-                dsock->player = NULL;
-                close_socket(dsock, false);
-            }
-            break;
+        }
+        else
+        {
+            text_to_socket(dsock, "Bad password!\n\r");
+            free_mobile(dsock->player);
+            dsock->player = NULL;
+            close_socket(dsock, false);
+        }
+        break;
     }
 }
 
 void clear_socket(D_SOCKET *sock_new, int sock)
 {
-    memset(sock_new, 0, sizeof (*sock_new));
+    memset(sock_new, 0, sizeof(*sock_new));
 
     sock_new->control = sock;
     sock_new->state = STATE_NEW_NAME;
@@ -987,16 +1234,17 @@ void clear_socket(D_SOCKET *sock_new, int sock)
 /* does the lookup, changes the hostname, and dies */
 void *lookup_address(void *arg)
 {
-    LOOKUP_DATA *lData = (LOOKUP_DATA *) arg;
+    LOOKUP_DATA *lData = (LOOKUP_DATA *)arg;
 
     char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
     int rc;
 
     /* do the lookup and store the result at &from */
-    rc = getnameinfo(lData->sa, sizeof (lData->sa), hbuf, sizeof (hbuf), sbuf, sizeof (sbuf), NI_NAMEREQD);
+    rc = getnameinfo(lData->sa, sizeof(lData->sa), hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NAMEREQD);
 
     /* did we get anything ? */
-    if (0 == rc) {
+    if (0 == rc)
+    {
         free(lData->dsock->hostname);
         lData->dsock->hostname = strdup(hbuf);
     }
@@ -1017,8 +1265,10 @@ void recycle_sockets()
     ITERATOR Iter;
 
     AttachIterator(&Iter, dsock_list);
-    while ((dsock = (D_SOCKET *) NextInList(&Iter)) != NULL) {
-        if (dsock->lookup_status != TSTATE_CLOSED) continue;
+    while ((dsock = (D_SOCKET *)NextInList(&Iter)) != NULL)
+    {
+        if (dsock->lookup_status != TSTATE_CLOSED)
+            continue;
 
         /* remove the socket from the socket list */
         DetachFromList(dsock, dsock_list);

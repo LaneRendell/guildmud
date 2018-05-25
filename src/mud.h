@@ -337,7 +337,9 @@ void gmcpReceived(D_S *dsock);
 /**
  * msdp.c
  */
-bool msdpEnable(D_S *dsock);
+bool msdpEnable(D_S *client);
+bool msdpSend(D_S *client, char *command);
+void msdpReceive(D_S *client);
 
 /*
  * save.c

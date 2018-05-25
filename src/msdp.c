@@ -29,15 +29,16 @@ typedef enum
     MSDP_END,
 } MSDP_FLAGS;
 
-struct Command
+struct msdpCommands
 {
+    //unsigned char cmdValue;
     char *name;
     int8_t commandFlags;
     Handler funcPointer;
 };
 
 
-struct Command msdp_table[] =
+struct msdpCommands msdp_table[] =
 {
     /** General */
     {   "CLIENT_NAME",                          MSDP_CONFIGURABLE|MSDP_REPORTABLE,          NULL},
@@ -64,10 +65,52 @@ struct Command msdp_table[] =
 };
 
 const unsigned char msdp_head[] = {IAC, SB, TELOPT_MSDP, 0};
-const unsigned char msdp_tailp[] = {IAC, SE, 0};
+const unsigned char msdp_tail[] = {IAC, SE, 0};
 
-bool msdpEnable(D_S *sock)
+bool msdpEnable(D_S *client)
 {
-    sock->msdp_enabled = true;
-    return sock->msdp_enabled;
+    client->msdp_enabled = true;
+    return client->msdp_enabled;
+}
+
+/**
+ * @brief Sends the header and footer for a MSDP command, along with the supplied string which
+ * makes up the meat of the command.
+ * 
+ * @param client D_S Whom we are sending to. 
+ * @param command char * Command to send.
+ * @return true On success of sending.
+ * @return false If it fails.
+ */
+bool msdpSendToClient(D_S *client, char *command)
+{
+    if (!client->msdp_enabled)
+        return false;
+    
+    if (!text_to_socket(client, (char *)msdp_head))
+        return false;
+    
+    if (!text_to_socket(client, command))
+        return false;
+
+    if (!text_to_socket(client, (char *)msdp_tail))
+        return false;
+    
+    return true;
+
+}
+
+/**
+ * @brief Takes in commands from the client
+ * 
+ * @return void
+ */
+void msdpReceive(D_S *client)
+{
+    log_string(client->inbuf);
+    //log_string(client->next_command);
+
+    // parse 
+
+    // respond
 }

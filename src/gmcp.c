@@ -34,5 +34,5 @@ bool gmcpSend(D_S *dsock, const char *data)
 
 void gmcpReceived(D_S *dsock)
 {
-    /* TODO: Extend this with something useful */
+    log_string(dsock->inbuf);
 }
