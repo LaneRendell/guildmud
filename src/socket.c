@@ -38,19 +38,6 @@ struct telnetValToString
     const char *name; // The name in human readable format.
 };
 
-struct telnetValToString telnetCommands[] =
-    {
-        {DO, "DO"},
-        {DONT, "DONT"},
-        {IAC, "IAC"},
-        {WILL, "WILL"},
-        {WONT, "WONT"},
-        {SB, "SB"},
-        {SE, "SE"},
-        {MSDP_VAL, "MSDP_VAL"},
-        {MSDP_VAR, "MSDP_VAR"},
-        {-1, "\0"}};
-
 /* mccp support */
 const unsigned char compress_will[] = {IAC, WILL, TELOPT_COMPRESS, '\0'};
 const unsigned char compress_will2[] = {IAC, WILL, TELOPT_COMPRESS2, '\0'};
@@ -819,9 +806,8 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
                 printf("%u ", (unsigned char)dsock->inbuf[z]);
             }
 
-            telnetCmdToString(dsock->inbuf);
-
             printf("\n");
+            telnetCmdToString(dsock->inbuf);
 
             dsock->next_command[j] = '\0';
             msdpReceive(dsock);
@@ -904,94 +890,86 @@ void next_cmd_from_buffer(D_SOCKET *dsock)
     dsock->inbuf[size - i] = '\0';
 }
 
-bool telnetCmdMatch(int searchVal)
+struct telnetValToString telnetCommands[] =
+{
+        {DO, "DO"},
+        {DONT, "DONT"},
+        {IAC, "IAC"},
+        {WILL, "WILL"},
+        {WONT, "WONT"},
+        {SB, "SB"},
+        {SE, "SE"},
+        {MSDP_VAL, "MSDP_VAL"},
+        {MSDP_VAR, "MSDP_VAR"},
+        {-1, "\0"}
+};
+
+
+struct telnetValToString *telnetCmdMatch(int searchVal)
 {
     int currVal = 0;
-    size_t count = 0;
-    while (currVal >= 0)
+    struct telnetValToString *ptr = telnetCommands;
+    struct telnetValToString *endPtr = telnetCommands + sizeof(telnetCommands) / sizeof(telnetCommands[0]);
+
+    while (ptr < endPtr)
     {
-        // Update currVal
-        currVal = telnetCommands[count++].val;
-        // We have a match
-        if (searchVal == currVal)
+        currVal = ptr->val;
+        printf("Curr val in table: %u\n", currVal);
+        if (currVal == searchVal)
         {
-            return true;
+            printf("Found match.\n");
+            return ptr;
         }
+
+
+        if (currVal == -1)
+        {
+            printf("Match not found.\n");
+            return NULL;
+        }
+
+        ptr++;
     }
 
-    return false;
-}
-
-// Bugged.
-void *catOrCopy(char *dest, char *src)
-{
-    if (strlen(src) > 0)
-    {
-        strcat(dest, src);
-        return dest;
-    } else {
-        strcpy(dest, src);
-        return src;
-    }
-
+    printf("Match not found.\n");
     return NULL;
 }
-
-/*
-int currVal = 0;
-            size_t count = 0;
-            while (currVal >= 0)
-            {
-                // Update currVal
-                currVal = telnetCommands[count].val;
-
-                // We have a match
-                if (currElem == currVal)
-                {
-                    inCommand = true;
-                    if (z == 0)
-                    {
-                        strcpy(correctedString, telnetCommands[count].name);
-                    }
-                    else
-                    {
-                        strcat(correctedString, telnetCommands[count].name);
-                    }
-                }
-            }
-*/
 
 void telnetCmdToString(char *playerInBuff)
 {
     bool inCommand = false;
     // Build a new string. A better string. A bolder string.
-    char correctedString[strlen(playerInBuff) + 1];
+    char correctedString[MAX_BUFFER];
+    struct telnetValToString *ptr = telnetCommands;
 
     // loop through input buffer
     for (int z = 0; z <= strlen(playerInBuff); z++)
     {
         // save a cast
         unsigned char currElem = (unsigned char)playerInBuff[z];
+        printf("Current Element: %u\n", currElem);
         if (currElem > 127)
         {
             // Telnet Command.
             // loop through the command table
-            if (telnetCmdMatch(currElem))
-            {
-                // if we found a match then based on corrected string
-                // add it somehow
-                // TODO: maybe not this every loop through? 
-                // Probably collect "chunks" and allocate chunk by chunk.
 
-                catOrCopy(correctedString, (char *)telnetCommands[currElem].name);
-                printf("Test\n");
-            } else {
+            ptr = telnetCmdMatch((int) currElem);
+
+            if (ptr != NULL)
+            {
+                strcat(correctedString, ptr->name);
+                strcat(correctedString, " ");
+            }
+            else
+            {
                 // Some error
                 printf("Invalid telnet command. Or some lazy bum didnt implement it.\n");
             }
 
             inCommand = true;
-        } else {
+        }
+        else
+        {
             // Check whether in a command or not
             // If we are we want to not translate certain values into there
             // ASCII values.
@@ -1000,11 +978,17 @@ void telnetCmdToString(char *playerInBuff)
 
             if (!inCommand)
             {
-
-            } else {
+            }
+            else
+            {
                 // We are in a for real ASCII string, just store it normally.
             }
         }
+    }
+
+    if (strlen(correctedString) > 0)
+    {
+        printf("%s\n", correctedString);
     }
 
     //return true;
